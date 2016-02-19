@@ -1,0 +1,95 @@
+var Phaser = require('phaser');
+var Events = require('Events');
+var Class = require('Class');
+var _ = require('lodash');
+
+/**
+ * Main engine class
+ *
+ * @extend {Events}
+ *
+ * @class Engine
+ * @name Engine
+ */
+module.exports = Class.extend([Events], {
+
+    /**
+    * The width of your game in game pixels.
+    * If given as a string the value must be between 0 and 100 and will be used as the percentage width
+    * of the parent container, or the browser window if no parent is given
+    *
+    * @type {Number|String}
+    */
+    width: "100", // 100%
+
+    /**
+    * The height  of your game in game pixels.
+    * If given as a string the value must be between 0 and 100 and will be used as the percentage width
+    * of the parent container, or the browser window if no parent is given
+    *
+    * @type {Number|String}
+    */
+    height: "100", // 100%
+
+    /**
+    * This is where the magic happens. The Game object is the heart of your game, providing quick access to common
+    * functions and handling the boot process.
+    *
+    * @type {Phaser.Game}
+    */
+    game: null,
+
+    /**
+     * Init object
+     *
+     * @constructor
+     */
+    constructor: function(){
+
+        // Make phaser accessible global, this is not good practice, but I don't give a fuck!
+        window.Phaser = Phaser;
+    },
+
+    /**
+     * Start game level
+     */
+    createGame: function() {
+
+        // Initialize optional modules
+        Phaser.Keyboard = require('./modules/input/Keyboard');
+        Phaser.Physics.Arcade = require('./modules/physics/World');
+
+        // Create game object
+        this.game =  _.extend(new Phaser.Game(this.width, this.height, Phaser.AUTO, this.element, {
+            preload: this.preload.bind(this),
+            create:  this.create.bind(this)
+        }), Events);
+
+        return this.game;
+    },
+
+    /**
+     * Preload is called first. Normally you'd use this to load your game assets (or those needed for the current State)
+     * You shouldn't create any objects in this method that require assets that you're also loading in this method, as
+     * they won't yet be available.
+     */
+    preload: function(){
+
+        this.game.trigger('preload');
+
+    },
+
+    /**
+     * Create is called once preload has completed, this includes the loading of any assets from the Loader.
+     * If you don't have a preload method then create is the first method called in your State.
+     */
+    create: function(){
+
+        //  Enable physics
+        this.game.physics.startSystem(Phaser.Physics.ARCADE);
+
+        this.game.trigger('create');
+    }
+
+});
+

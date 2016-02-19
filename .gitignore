@@ -1,0 +1,8 @@
+# node-waf configuration
+.lock-wscript
+
+# Idea
+.idea
+
+node_modules
+.tmp

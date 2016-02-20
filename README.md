@@ -5,19 +5,19 @@ One of the Infinite attempts to write multiplayer top down shooter
 Installation:
 -----------------------------------------------------------------------
 
-1. Install webpack
+1.Install webpack
 
 ```
 npm install webpack -g
 ```
 
-2. Install dependencies
+2.Install dependencies
 
 ````
 npm install
 ````
 
-3. Profit!
+3.Profit!
 
 Webpack usage:
 -----------------------------------------------------------------------

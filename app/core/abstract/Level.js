@@ -27,6 +27,7 @@ module.exports = Class.extend([Events], {
 
         // Listen preload event
         this.listenTo(this.game, 'preload', this.preload);
+        this.listenTo(this.game, 'create', this.create);
     },
 
     /**
@@ -39,10 +40,12 @@ module.exports = Class.extend([Events], {
         var gameObject = new GameObject(this.game);
 
         if (gameObject.preload) gameObject.preload();
-        if (gameObject.create) gameObject.listenTo(this.game, 'create', gameObject.create);
+
+        gameObject.listenTo(this.game, 'create', gameObject.beforeCreate);
 
         this.game.plugins.add(gameObject);
         this.gameObjects.push(gameObject);
+
     },
 
     /**
@@ -50,6 +53,13 @@ module.exports = Class.extend([Events], {
      */
     preload: function(){
         console.warn('Preload not defined');
+    },
+
+    /**
+     * Stub for create method
+     */
+    create: function(){
+        console.warn('Create not defined');
     }
 
 });

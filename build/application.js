@@ -110,8 +110,16 @@ webpackJsonp([0],[
 	     */
 	    preload: function(){
 
-	        this.add(__webpack_require__(19));
 
+	        this.add(__webpack_require__(28));
+
+	    },
+
+	    /**
+	     * Create a world
+	     */
+	    create: function(){
+	        //this.game.world.setBounds(0, 0, 1920, 1200);
 	    }
 
 	});
@@ -150,6 +158,7 @@ webpackJsonp([0],[
 
 	        // Listen preload event
 	        this.listenTo(this.game, 'preload', this.preload);
+	        this.listenTo(this.game, 'create', this.create);
 	    },
 
 	    /**
@@ -162,10 +171,12 @@ webpackJsonp([0],[
 	        var gameObject = new GameObject(this.game);
 
 	        if (gameObject.preload) gameObject.preload();
-	        if (gameObject.create) gameObject.listenTo(this.game, 'create', gameObject.create);
+
+	        gameObject.listenTo(this.game, 'create', gameObject.beforeCreate);
 
 	        this.game.plugins.add(gameObject);
 	        this.gameObjects.push(gameObject);
+
 	    },
 
 	    /**
@@ -173,6 +184,13 @@ webpackJsonp([0],[
 	     */
 	    preload: function(){
 	        console.warn('Preload not defined');
+	    },
+
+	    /**
+	     * Stub for create method
+	     */
+	    create: function(){
+	        console.warn('Create not defined');
 	    }
 
 	});
@@ -372,6 +390,21 @@ webpackJsonp([0],[
 	module.exports = Class.extend([Events], {
 
 	    /**
+	     * Default renderer, if debug ON will be switched to CANVAS
+	     */
+	    renderer: Phaser.AUTO,
+
+	    /**
+	     * Enable engine debug
+	     */
+	    debug: true,
+
+	    /**
+	     * Enable performance monitor
+	     */
+	    debugPerformanceMonitor: true,
+
+	    /**
 	    * The width of your game in game pixels.
 	    * If given as a string the value must be between 0 and 100 and will be used as the percentage width
 	    * of the parent container, or the browser window if no parent is given
@@ -414,14 +447,24 @@ webpackJsonp([0],[
 	    createGame: function() {
 
 	        // Initialize optional modules
-	        Phaser.Keyboard = __webpack_require__(24);
-	        Phaser.Physics.Arcade = __webpack_require__(26);
+	        Phaser.PluginManager = __webpack_require__(19);
+	        Phaser.Keyboard = __webpack_require__(20);
+	        Phaser.Physics.Arcade = __webpack_require__(22);
+
+	        // Initialize debug module
+	        if(this.debug) {
+	            Phaser.Utils.Debug = __webpack_require__(25);
+	            Phaser.BitmapData = __webpack_require__(26);
+	            this.renderer = Phaser.CANVAS; // Debug not works for WebGL render
+	        }
 
 	        // Create game object
-	        this.game =  _.extend(new Phaser.Game(this.width, this.height, Phaser.AUTO, this.element, {
+	        this.game =  _.extend(new Phaser.Game(this.width, this.height, this.renderer, this.element, {
 	            preload: this.preload.bind(this),
 	            create:  this.create.bind(this)
 	        }), Events);
+
+	        this.game.isDebugEnabled = this.debug;
 
 	        return this.game;
 	    },
@@ -432,6 +475,10 @@ webpackJsonp([0],[
 	     * they won't yet be available.
 	     */
 	    preload: function(){
+
+	        if (this.debugPerformanceMonitor){
+	            this.game.plugins.add(__webpack_require__(27));
+	        }
 
 	        this.game.trigger('preload');
 
@@ -588,328 +635,300 @@ webpackJsonp([0],[
 /* 17 */,
 /* 18 */,
 /* 19 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var GameObject = __webpack_require__(20);
-	var KeyCodes = __webpack_require__(21);
-
-	// Shortcuts
-	var game;
+/***/ function(module, exports) {
 
 	/**
-	 * Player represent player objects
-	 *
-	 * @name Player
-	 * @class Player
+	 * @author       Richard Davey <rich@photonstorm.com>
+	 * @copyright    2015 Photon Storm Ltd.
+	 * @license      {@link https://github.com/photonstorm/phaser/blob/master/license.txt|MIT License}
 	 */
-	module.exports = GameObject.extend({
+
+	/**
+	 * The Plugin Manager is responsible for the loading, running and unloading of Phaser Plugins.
+	 *
+	 * @class Phaser.PluginManager
+	 * @constructor
+	 * @param {Phaser.Game} game - A reference to the currently running game.
+	 */
+	var PluginManager = function(game) {
 
 	    /**
-	     * Ship sprite
+	     * @property {Phaser.Game} game - A reference to the currently running game.
+	     */
+	    this.game = game;
+
+	    /**
+	     * @property {Phaser.Plugin[]} plugins - An array of all the plugins being managed by this PluginManager.
+	     */
+	    this.plugins = [];
+
+	    /**
+	     * @property {number} _len - Internal cache var.
+	     * @private
+	     */
+	    this._len = 0;
+
+	    /**
+	     * @property {number} _i - Internal cache var.
+	     * @private
+	     */
+	    this._i = 0;
+
+	};
+
+	PluginManager.prototype = {
+
+	    /**
+	     * Add a new Plugin into the PluginManager.
+	     * The Plugin must have 2 properties: game and parent. Plugin.game is set to the game reference the PluginManager uses, and parent is set to the PluginManager.
 	     *
-	     * @type {Phaser.Sprite}
+	     * @method Phaser.PluginManager#add
+	     * @param {object|Phaser.Plugin} plugin - The Plugin to add into the PluginManager. This can be a function or an existing object.
+	     * @param {...*} parameter - Additional arguments that will be passed to the Plugin.init method.
+	     * @return {Phaser.Plugin} The Plugin that was added to the manager.
 	     */
-	    ship: null,
+	    add: function (plugin) {
 
-	    /**
-	     * Preload is called first. Normally you'd use this to load your game assets (or those needed for the current State)
-	     * You shouldn't create any objects in this method that require assets that you're also loading in this method, as
-	     * they won't yet be available.
-	     */
-	    preload: function(){
+	        var args = Array.prototype.slice.call(arguments, 1);
+	        var result = false;
 
-	        game = this.game;
+	        //  Prototype?
+	        if (typeof plugin === 'function')
+	        {
+	            plugin = new plugin(this.game, this);
 
-	        game.load.image('ship', 'assets/general/ship.png');
-	    },
-
-	    /**
-	     * Create is called once preload has completed, this includes the loading of any assets from the Loader.
-	     * If you don't have a preload method then create is the first method called in your State.
-	     */
-	    create: function(){
-
-	        // Add ship to stage
-	        var ship = this.ship = game.add.sprite(300, 300 ,'ship');
-
-	        // Add physics
-	        game.physics.enable(ship, Phaser.Physics.ARCADE);
-
-	        // Setup physics
-	        ship.body.drag.set(100);
-	        ship.body.maxVelocity.set(400);
-	    },
-
-	    /**
-	     * It is called during the core game loop AFTER debug, physics, plugins and the Stage have had their preUpdate methods called.
-	     * If is called BEFORE Stage, Tweens, Sounds, Input, Physics, Particles and Plugins have had their postUpdate methods called.
-	     */
-	    update: function(){
-
-	        if(game.input.keyboard.isDown(KeyCodes.SPACEBAR)){
-	            game.physics.arcade.accelerationFromRotation(this.ship.rotation, 200, this.ship.body.acceleration);
 	        }
+	        else
+	        {
+	            plugin.game = this.game;
+	            plugin.parent = this;
+	        }
+
+	        //  Check for methods now to avoid having to do this every loop
+	        if (typeof plugin['preUpdate'] === 'function')
+	        {
+	            plugin.hasPreUpdate = true;
+	            result = true;
+	        }
+
+	        if (typeof plugin['update'] === 'function')
+	        {
+	            plugin.hasUpdate = true;
+	            result = true;
+	        }
+
+	        if (typeof plugin['postUpdate'] === 'function')
+	        {
+	            plugin.hasPostUpdate = true;
+	            result = true;
+	        }
+
+	        if (typeof plugin['render'] === 'function')
+	        {
+	            plugin.hasRender = true;
+	            result = true;
+	        }
+
+	        if (typeof plugin['postRender'] === 'function')
+	        {
+	            plugin.hasPostRender = true;
+	            result = true;
+	        }
+
+	        //  The plugin must have at least one of the above functions to be added to the PluginManager.
+	        if (result)
+	        {
+	            if (plugin.hasPreUpdate || plugin.hasUpdate || plugin.hasPostUpdate)
+	            {
+	                plugin.active = true;
+	            }
+
+	            if (plugin.hasRender || plugin.hasPostRender)
+	            {
+	                plugin.visible = true;
+	            }
+
+	            // Allows plugins to run potentially destructive code outside of the constructor, and only if being added to the PluginManager
+	            if (typeof plugin['init'] === 'function')
+	            {
+	                plugin.init.apply(plugin, args);
+	            }
+
+	            this._len = this.plugins.push(plugin);
+
+	            return plugin;
+	        }
+	        else
+	        {
+	            return null;
+	        }
+	    },
+
+	    /**
+	     * Remove a Plugin from the PluginManager. It calls Plugin.destroy on the plugin before removing it from the manager.
+	     *
+	     * @method Phaser.PluginManager#remove
+	     * @param {Phaser.Plugin} plugin - The plugin to be removed.
+	     */
+	    remove: function (plugin) {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i] === plugin)
+	            {
+	                plugin.destroy();
+	                this.plugins.splice(this._i, 1);
+	                this._len--;
+	                return;
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * Remove all Plugins from the PluginManager. It calls Plugin.destroy on every plugin before removing it from the manager.
+	     *
+	     * @method Phaser.PluginManager#removeAll
+	     */
+	    removeAll: function() {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            this.plugins[this._i].destroy();
+	        }
+
+	        this.plugins.length = 0;
+	        this._len = 0;
+
+	    },
+
+	    /**
+	     * Pre-update is called at the very start of the update cycle, before any other subsystems have been updated (including Physics).
+	     * It only calls plugins who have active=true.
+	     *
+	     * @method Phaser.PluginManager#preUpdate
+	     */
+	    preUpdate: function () {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i].active && this.plugins[this._i].hasPreUpdate)
+	            {
+	                this.plugins[this._i].preUpdate();
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * Update is called after all the core subsystems (Input, Tweens, Sound, etc) and the State have updated, but before the render.
+	     * It only calls plugins who have active=true.
+	     *
+	     * @method Phaser.PluginManager#update
+	     */
+	    update: function () {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i].active && this.plugins[this._i].hasUpdate)
+	            {
+	                this.plugins[this._i].update();
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * PostUpdate is the last thing to be called before the world render.
+	     * In particular, it is called after the world postUpdate, which means the camera has been adjusted.
+	     * It only calls plugins who have active=true.
+	     *
+	     * @method Phaser.PluginManager#postUpdate
+	     */
+	    postUpdate: function () {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i].active && this.plugins[this._i].hasPostUpdate)
+	            {
+	                this.plugins[this._i].postUpdate();
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * Render is called right after the Game Renderer completes, but before the State.render.
+	     * It only calls plugins who have visible=true.
+	     *
+	     * @method Phaser.PluginManager#render
+	     */
+	    render: function () {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i].visible && this.plugins[this._i].hasRender)
+	            {
+	                this.plugins[this._i].render();
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * Post-render is called after the Game Renderer and State.render have run.
+	     * It only calls plugins who have visible=true.
+	     *
+	     * @method Phaser.PluginManager#postRender
+	     */
+	    postRender: function () {
+
+	        this._i = this._len;
+
+	        while (this._i--)
+	        {
+	            if (this.plugins[this._i].visible && this.plugins[this._i].hasPostRender)
+	            {
+	                this.plugins[this._i].postRender();
+	            }
+	        }
+
+	    },
+
+	    /**
+	     * Clear down this PluginManager, calls destroy on every plugin and nulls out references.
+	     *
+	     * @method Phaser.PluginManager#destroy
+	     */
+	    destroy: function () {
+
+	        this.removeAll();
+
+	        this.game = null;
 
 	    }
 
-	});
+	};
+
+	PluginManager.prototype.constructor = PluginManager;
+
+	module.exports = PluginManager;
 
 
 /***/ },
 /* 20 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var Class = __webpack_require__(16);
-	var Phaser = __webpack_require__(13);
-	var Events = __webpack_require__(11);
-
-	/**
-	 * Basic game object
-	 *
-	 * @parent {Phaser.Plugin}
-	 * @parent {Events}
-	 *
-	 * @class GameObject
-	 * @name GameObject
-	 */
-	module.exports = Class.extend([Events, Phaser.Plugin], {
-
-	    /**
-	     * Init plugin instance
-	     *
-	     * @constructor
-	     *
-	     * @param gameLink
-	     * @param parent
-	     */
-	    constructor: function(gameLink, parent){
-	        this.game = gameLink;
-	        this.parent = parent || null;
-	    }
-
-	});
-
-
-/***/ },
-/* 21 */
-/***/ function(module, exports) {
-
-	
-	var KeyCodes = {
-
-	    /** @static */
-	    A: "A".charCodeAt(0),
-	    /** @static */
-	    B: "B".charCodeAt(0),
-	    /** @static */
-	    C: "C".charCodeAt(0),
-	    /** @static */
-	    D: "D".charCodeAt(0),
-	    /** @static */
-	    E: "E".charCodeAt(0),
-	    /** @static */
-	    F: "F".charCodeAt(0),
-	    /** @static */
-	    G: "G".charCodeAt(0),
-	    /** @static */
-	    H: "H".charCodeAt(0),
-	    /** @static */
-	    I: "I".charCodeAt(0),
-	    /** @static */
-	    J: "J".charCodeAt(0),
-	    /** @static */
-	    K: "K".charCodeAt(0),
-	    /** @static */
-	    L: "L".charCodeAt(0),
-	    /** @static */
-	    M: "M".charCodeAt(0),
-	    /** @static */
-	    N: "N".charCodeAt(0),
-	    /** @static */
-	    O: "O".charCodeAt(0),
-	    /** @static */
-	    P: "P".charCodeAt(0),
-	    /** @static */
-	    Q: "Q".charCodeAt(0),
-	    /** @static */
-	    R: "R".charCodeAt(0),
-	    /** @static */
-	    S: "S".charCodeAt(0),
-	    /** @static */
-	    T: "T".charCodeAt(0),
-	    /** @static */
-	    U: "U".charCodeAt(0),
-	    /** @static */
-	    V: "V".charCodeAt(0),
-	    /** @static */
-	    W: "W".charCodeAt(0),
-	    /** @static */
-	    X: "X".charCodeAt(0),
-	    /** @static */
-	    Y: "Y".charCodeAt(0),
-	    /** @static */
-	    Z: "Z".charCodeAt(0),
-	    /** @static */
-	    ZERO: "0".charCodeAt(0),
-	    /** @static */
-	    ONE: "1".charCodeAt(0),
-	    /** @static */
-	    TWO: "2".charCodeAt(0),
-	    /** @static */
-	    THREE: "3".charCodeAt(0),
-	    /** @static */
-	    FOUR: "4".charCodeAt(0),
-	    /** @static */
-	    FIVE: "5".charCodeAt(0),
-	    /** @static */
-	    SIX: "6".charCodeAt(0),
-	    /** @static */
-	    SEVEN: "7".charCodeAt(0),
-	    /** @static */
-	    EIGHT: "8".charCodeAt(0),
-	    /** @static */
-	    NINE: "9".charCodeAt(0),
-	    /** @static */
-	    NUMPAD_0: 96,
-	    /** @static */
-	    NUMPAD_1: 97,
-	    /** @static */
-	    NUMPAD_2: 98,
-	    /** @static */
-	    NUMPAD_3: 99,
-	    /** @static */
-	    NUMPAD_4: 100,
-	    /** @static */
-	    NUMPAD_5: 101,
-	    /** @static */
-	    NUMPAD_6: 102,
-	    /** @static */
-	    NUMPAD_7: 103,
-	    /** @static */
-	    NUMPAD_8: 104,
-	    /** @static */
-	    NUMPAD_9: 105,
-	    /** @static */
-	    NUMPAD_MULTIPLY: 106,
-	    /** @static */
-	    NUMPAD_ADD: 107,
-	    /** @static */
-	    NUMPAD_ENTER: 108,
-	    /** @static */
-	    NUMPAD_SUBTRACT: 109,
-	    /** @static */
-	    NUMPAD_DECIMAL: 110,
-	    /** @static */
-	    NUMPAD_DIVIDE: 111,
-	    /** @static */
-	    F1: 112,
-	    /** @static */
-	    F2: 113,
-	    /** @static */
-	    F3: 114,
-	    /** @static */
-	    F4: 115,
-	    /** @static */
-	    F5: 116,
-	    /** @static */
-	    F6: 117,
-	    /** @static */
-	    F7: 118,
-	    /** @static */
-	    F8: 119,
-	    /** @static */
-	    F9: 120,
-	    /** @static */
-	    F10: 121,
-	    /** @static */
-	    F11: 122,
-	    /** @static */
-	    F12: 123,
-	    /** @static */
-	    F13: 124,
-	    /** @static */
-	    F14: 125,
-	    /** @static */
-	    F15: 126,
-	    /** @static */
-	    COLON: 186,
-	    /** @static */
-	    EQUALS: 187,
-	    /** @static */
-	    COMMA: 188,
-	    /** @static */
-	    UNDERSCORE: 189,
-	    /** @static */
-	    PERIOD: 190,
-	    /** @static */
-	    QUESTION_MARK: 191,
-	    /** @static */
-	    TILDE: 192,
-	    /** @static */
-	    OPEN_BRACKET: 219,
-	    /** @static */
-	    BACKWARD_SLASH: 220,
-	    /** @static */
-	    CLOSED_BRACKET: 221,
-	    /** @static */
-	    QUOTES: 222,
-	    /** @static */
-	    BACKSPACE: 8,
-	    /** @static */
-	    TAB: 9,
-	    /** @static */
-	    CLEAR: 12,
-	    /** @static */
-	    ENTER: 13,
-	    /** @static */
-	    SHIFT: 16,
-	    /** @static */
-	    CONTROL: 17,
-	    /** @static */
-	    ALT: 18,
-	    /** @static */
-	    CAPS_LOCK: 20,
-	    /** @static */
-	    ESC: 27,
-	    /** @static */
-	    SPACEBAR: 32,
-	    /** @static */
-	    PAGE_UP: 33,
-	    /** @static */
-	    PAGE_DOWN: 34,
-	    /** @static */
-	    END: 35,
-	    /** @static */
-	    HOME: 36,
-	    /** @static */
-	    LEFT: 37,
-	    /** @static */
-	    UP: 38,
-	    /** @static */
-	    RIGHT: 39,
-	    /** @static */
-	    DOWN: 40,
-	    /** @static */
-	    PLUS: 43,
-	    /** @static */
-	    MINUS: 44,
-	    /** @static */
-	    INSERT: 45,
-	    /** @static */
-	    DELETE: 46,
-	    /** @static */
-	    HELP: 47,
-	    /** @static */
-	    NUM_LOCK: 144
-	};
-
-	module.exports = KeyCodes;
-
-
-/***/ },
-/* 22 */,
-/* 23 */,
-/* 24 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -919,7 +938,7 @@ webpackJsonp([0],[
 	*/
 
 	var Phaser = __webpack_require__(13);
-	Phaser.Key = __webpack_require__(25);
+	Phaser.Key = __webpack_require__(21);
 
 	/**
 	* The Keyboard class monitors keyboard input and dispatches keyboard events.
@@ -1520,7 +1539,7 @@ webpackJsonp([0],[
 
 
 /***/ },
-/* 25 */
+/* 21 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -1894,7 +1913,7 @@ webpackJsonp([0],[
 
 
 /***/ },
-/* 26 */
+/* 22 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var Phaser = __webpack_require__(13);
@@ -1993,8 +2012,8 @@ webpackJsonp([0],[
 
 	Phaser.Physics.Arcade.prototype.constructor = Phaser.Physics.Arcade;
 
-	Phaser.Physics.Arcade.Body = __webpack_require__(27);
-	Phaser.Physics.Arcade.TilemapCollision = __webpack_require__(28);
+	Phaser.Physics.Arcade.Body = __webpack_require__(23);
+	Phaser.Physics.Arcade.TilemapCollision = __webpack_require__(24);
 
 	/**
 	* A constant used for the sortDirection value.
@@ -3614,7 +3633,7 @@ webpackJsonp([0],[
 
 
 /***/ },
-/* 27 */
+/* 23 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var Phaser = __webpack_require__(13);
@@ -4504,7 +4523,7 @@ webpackJsonp([0],[
 
 
 /***/ },
-/* 28 */
+/* 24 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var Phaser = __webpack_require__(13);
@@ -4915,6 +4934,5228 @@ webpackJsonp([0],[
 	};
 
 	module.exports = Phaser.Physics.Arcade.TilemapCollision;
+
+
+/***/ },
+/* 25 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/**
+	* @author       Richard Davey <rich@photonstorm.com>
+	* @copyright    2015 Photon Storm Ltd.
+	* @license      {@link https://github.com/photonstorm/phaser/blob/master/license.txt|MIT License}
+	*/
+
+	var PIXI = __webpack_require__(15);
+
+	/**
+	* A collection of methods for displaying debug information about game objects.
+	* If your game is running in WebGL then Debug will create a Sprite that is placed at the top of the Stage display list and bind a canvas texture
+	* to it, which must be uploaded every frame. Be advised: this is very expensive, especially in browsers like Firefox. So please only enable Debug
+	* in WebGL mode if you really need it (or your desktop can cope with it well) and disable it for production!
+	* If your game is using a Canvas renderer then the debug information is literally drawn on the top of the active game canvas and no Sprite is used.
+	*
+	* @class Phaser.Utils.Debug
+	* @constructor
+	* @param {Phaser.Game} game - A reference to the currently running game.
+	*/
+	var Debug = function (game) {
+
+	    /**
+	    * @property {Phaser.Game} game - A reference to the currently running Game.
+	    */
+	    this.game = game;
+
+	    /**
+	    * @property {Phaser.Image} sprite - If debugging in WebGL mode we need this.
+	    */
+	    this.sprite = null;
+
+	    /**
+	    * @property {Phaser.BitmapData} bmd - In WebGL mode this BitmapData contains a copy of the debug canvas.
+	    */
+	    this.bmd = null;
+
+	    /**
+	    * @property {HTMLCanvasElement} canvas - The canvas to which Debug calls draws.
+	    */
+	    this.canvas = null;
+
+	    /**
+	    * @property {CanvasRenderingContext2D} context - The 2d context of the canvas.
+	    */
+	    this.context = null;
+
+	    /**
+	    * @property {string} font - The font that the debug information is rendered in.
+	    * @default '14px Courier'
+	    */
+	    this.font = '14px Courier';
+
+	    /**
+	    * @property {number} columnWidth - The spacing between columns.
+	    */
+	    this.columnWidth = 100;
+
+	    /**
+	    * @property {number} lineHeight - The line height between the debug text.
+	    */
+	    this.lineHeight = 16;
+
+	    /**
+	    * @property {boolean} renderShadow - Should the text be rendered with a slight shadow? Makes it easier to read on different types of background.
+	    */
+	    this.renderShadow = true;
+
+	    /**
+	    * @property {number} currentX - The current X position the debug information will be rendered at.
+	    * @default
+	    */
+	    this.currentX = 0;
+
+	    /**
+	    * @property {number} currentY - The current Y position the debug information will be rendered at.
+	    * @default
+	    */
+	    this.currentY = 0;
+
+	    /**
+	    * @property {number} currentAlpha - The alpha of the Debug context, set before all debug information is rendered to it.
+	    * @default
+	    */
+	    this.currentAlpha = 1;
+
+	    /**
+	    * @property {boolean} dirty - Does the canvas need re-rendering?
+	    */
+	    this.dirty = false;
+
+	};
+
+	Debug.prototype = {
+
+	    /**
+	    * Internal method that boots the debug displayer.
+	    *
+	    * @method Phaser.Utils.Debug#boot
+	    * @protected
+	    */
+	    boot: function () {
+
+	        if (this.game.renderType === Phaser.CANVAS)
+	        {
+	            this.context = this.game.context;
+	        }
+	        else
+	        {
+	            this.bmd = this.game.make.bitmapData(this.game.width, this.game.height);
+	            this.sprite = this.game.make.image(0, 0, this.bmd);
+	            this.game.stage.addChild(this.sprite);
+
+	            this.canvas = PIXI.CanvasPool.create(this, this.game.width, this.game.height);
+	            this.context = this.canvas.getContext('2d');
+	        }
+
+	    },
+
+	    /**
+	    * Internal method that clears the canvas (if a Sprite) ready for a new debug session.
+	    *
+	    * @method Phaser.Utils.Debug#preUpdate
+	    */
+	    preUpdate: function () {
+
+	        if (this.dirty && this.sprite)
+	        {
+	            this.bmd.clear();
+	            this.bmd.draw(this.canvas, 0, 0);
+
+	            this.context.clearRect(0, 0, this.game.width, this.game.height);
+	            this.dirty = false;
+	        }
+
+	    },
+
+	    /**
+	    * Clears the Debug canvas.
+	    *
+	    * @method Phaser.Utils.Debug#reset
+	    */
+	    reset: function () {
+
+	        if (this.context)
+	        {
+	            this.context.clearRect(0, 0, this.game.width, this.game.height);
+	        }
+
+	        if (this.sprite)
+	        {
+	            this.bmd.clear();
+	        }
+
+	    },
+
+	    /**
+	    * Internal method that resets and starts the debug output values.
+	    *
+	    * @method Phaser.Utils.Debug#start
+	    * @protected
+	    * @param {number} [x=0] - The X value the debug info will start from.
+	    * @param {number} [y=0] - The Y value the debug info will start from.
+	    * @param {string} [color='rgb(255,255,255)'] - The color the debug text will drawn in.
+	    * @param {number} [columnWidth=0] - The spacing between columns.
+	    */
+	    start: function (x, y, color, columnWidth) {
+
+	        if (typeof x !== 'number') { x = 0; }
+	        if (typeof y !== 'number') { y = 0; }
+	        color = color || 'rgb(255,255,255)';
+	        if (columnWidth === undefined) { columnWidth = 0; }
+
+	        this.currentX = x;
+	        this.currentY = y;
+	        this.currentColor = color;
+	        this.columnWidth = columnWidth;
+
+	        this.dirty = true;
+
+	        this.context.save();
+	        this.context.setTransform(1, 0, 0, 1, 0, 0);
+	        this.context.strokeStyle = color;
+	        this.context.fillStyle = color;
+	        this.context.font = this.font;
+	        this.context.globalAlpha = this.currentAlpha;
+
+	    },
+
+	    /**
+	    * Internal method that stops the debug output.
+	    *
+	    * @method Phaser.Utils.Debug#stop
+	    * @protected
+	    */
+	    stop: function () {
+
+	        this.context.restore();
+
+	    },
+
+	    /**
+	    * Internal method that outputs a single line of text split over as many columns as needed, one per parameter.
+	    *
+	    * @method Phaser.Utils.Debug#line
+	    * @protected
+	    */
+	    line: function () {
+
+	        var x = this.currentX;
+
+	        for (var i = 0; i < arguments.length; i++)
+	        {
+	            if (this.renderShadow)
+	            {
+	                this.context.fillStyle = 'rgb(0,0,0)';
+	                this.context.fillText(arguments[i], x + 1, this.currentY + 1);
+	                this.context.fillStyle = this.currentColor;
+	            }
+
+	            this.context.fillText(arguments[i], x, this.currentY);
+
+	            x += this.columnWidth;
+	        }
+
+	        this.currentY += this.lineHeight;
+
+	    },
+
+	    /**
+	    * Render Sound information, including decoded state, duration, volume and more.
+	    *
+	    * @method Phaser.Utils.Debug#soundInfo
+	    * @param {Phaser.Sound} sound - The sound object to debug.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    soundInfo: function (sound, x, y, color) {
+
+	        this.start(x, y, color);
+	        this.line('Sound: ' + sound.key + ' Locked: ' + sound.game.sound.touchLocked);
+	        this.line('Is Ready?: ' + this.game.cache.isSoundReady(sound.key) + ' Pending Playback: ' + sound.pendingPlayback);
+	        this.line('Decoded: ' + sound.isDecoded + ' Decoding: ' + sound.isDecoding);
+	        this.line('Total Duration: ' + sound.totalDuration + ' Playing: ' + sound.isPlaying);
+	        this.line('Time: ' + sound.currentTime);
+	        this.line('Volume: ' + sound.volume + ' Muted: ' + sound.mute);
+	        this.line('WebAudio: ' + sound.usingWebAudio + ' Audio: ' + sound.usingAudioTag);
+
+	        if (sound.currentMarker !== '')
+	        {
+	            this.line('Marker: ' + sound.currentMarker + ' Duration: ' + sound.duration + ' (ms: ' + sound.durationMS + ')');
+	            this.line('Start: ' + sound.markers[sound.currentMarker].start + ' Stop: ' + sound.markers[sound.currentMarker].stop);
+	            this.line('Position: ' + sound.position);
+	        }
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render camera information including dimensions and location.
+	    *
+	    * @method Phaser.Utils.Debug#cameraInfo
+	    * @param {Phaser.Camera} camera - The Phaser.Camera to show the debug information for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    cameraInfo: function (camera, x, y, color) {
+
+	        this.start(x, y, color);
+	        this.line('Camera (' + camera.width + ' x ' + camera.height + ')');
+	        this.line('X: ' + camera.x + ' Y: ' + camera.y);
+
+	        if (camera.bounds)
+	        {
+	            this.line('Bounds x: ' + camera.bounds.x + ' Y: ' + camera.bounds.y + ' w: ' + camera.bounds.width + ' h: ' + camera.bounds.height);
+	        }
+
+	        this.line('View x: ' + camera.view.x + ' Y: ' + camera.view.y + ' w: ' + camera.view.width + ' h: ' + camera.view.height);
+	        // this.line('Screen View x: ' + camera.screenView.x + ' Y: ' + camera.screenView.y + ' w: ' + camera.screenView.width + ' h: ' + camera.screenView.height);
+	        this.line('Total in view: ' + camera.totalInView);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render Timer information.
+	    *
+	    * @method Phaser.Utils.Debug#timer
+	    * @param {Phaser.Timer} timer - The Phaser.Timer to show the debug information for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    timer: function (timer, x, y, color) {
+
+	        this.start(x, y, color);
+	        this.line('Timer (running: ' + timer.running + ' expired: ' + timer.expired + ')');
+	        this.line('Next Tick: ' + timer.next + ' Duration: ' + timer.duration);
+	        this.line('Paused: ' + timer.paused + ' Length: ' + timer.length);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders the Pointer.circle object onto the stage in green if down or red if up along with debug text.
+	    *
+	    * @method Phaser.Utils.Debug#pointer
+	    * @param {Phaser.Pointer} pointer - The Pointer you wish to display.
+	    * @param {boolean} [hideIfUp=false] - Doesn't render the circle if the pointer is up.
+	    * @param {string} [downColor='rgba(0,255,0,0.5)'] - The color the circle is rendered in if down.
+	    * @param {string} [upColor='rgba(255,0,0,0.5)'] - The color the circle is rendered in if up (and hideIfUp is false).
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    pointer: function (pointer, hideIfUp, downColor, upColor, color) {
+
+	        if (pointer == null)
+	        {
+	            return;
+	        }
+
+	        if (hideIfUp === undefined) { hideIfUp = false; }
+	        downColor = downColor || 'rgba(0,255,0,0.5)';
+	        upColor = upColor || 'rgba(255,0,0,0.5)';
+
+	        if (hideIfUp === true && pointer.isUp === true)
+	        {
+	            return;
+	        }
+
+	        this.start(pointer.x, pointer.y - 100, color);
+	        this.context.beginPath();
+	        this.context.arc(pointer.x, pointer.y, pointer.circle.radius, 0, Math.PI * 2);
+
+	        if (pointer.active)
+	        {
+	            this.context.fillStyle = downColor;
+	        }
+	        else
+	        {
+	            this.context.fillStyle = upColor;
+	        }
+
+	        this.context.fill();
+	        this.context.closePath();
+
+	        //  Render the points
+	        this.context.beginPath();
+	        this.context.moveTo(pointer.positionDown.x, pointer.positionDown.y);
+	        this.context.lineTo(pointer.position.x, pointer.position.y);
+	        this.context.lineWidth = 2;
+	        this.context.stroke();
+	        this.context.closePath();
+
+	        //  Render the text
+	        this.line('ID: ' + pointer.id + " Active: " + pointer.active);
+	        this.line('World X: ' + pointer.worldX + " World Y: " + pointer.worldY);
+	        this.line('Screen X: ' + pointer.x + " Screen Y: " + pointer.y + " In: " + pointer.withinGame);
+	        this.line('Duration: ' + pointer.duration + " ms");
+	        this.line('is Down: ' + pointer.isDown + " is Up: " + pointer.isUp);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render Sprite Input Debug information.
+	    *
+	    * @method Phaser.Utils.Debug#spriteInputInfo
+	    * @param {Phaser.Sprite|Phaser.Image} sprite - The sprite to display the input data for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    spriteInputInfo: function (sprite, x, y, color) {
+
+	        this.start(x, y, color);
+	        this.line('Sprite Input: (' + sprite.width + ' x ' + sprite.height + ')');
+	        this.line('x: ' + sprite.input.pointerX().toFixed(1) + ' y: ' + sprite.input.pointerY().toFixed(1));
+	        this.line('over: ' + sprite.input.pointerOver() + ' duration: ' + sprite.input.overDuration().toFixed(0));
+	        this.line('down: ' + sprite.input.pointerDown() + ' duration: ' + sprite.input.downDuration().toFixed(0));
+	        this.line('just over: ' + sprite.input.justOver() + ' just out: ' + sprite.input.justOut());
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders Phaser.Key object information.
+	    *
+	    * @method Phaser.Utils.Debug#key
+	    * @param {Phaser.Key} key - The Key to render the information for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    key: function (key, x, y, color) {
+
+	        this.start(x, y, color, 150);
+
+	        this.line('Key:', key.keyCode, 'isDown:', key.isDown);
+	        this.line('justDown:', key.justDown, 'justUp:', key.justUp);
+	        this.line('Time Down:', key.timeDown.toFixed(0), 'duration:', key.duration.toFixed(0));
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render debug information about the Input object.
+	    *
+	    * @method Phaser.Utils.Debug#inputInfo
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    inputInfo: function (x, y, color) {
+
+	        this.start(x, y, color);
+	        this.line('Input');
+	        this.line('X: ' + this.game.input.x + ' Y: ' + this.game.input.y);
+	        this.line('World X: ' + this.game.input.worldX + ' World Y: ' + this.game.input.worldY);
+	        this.line('Scale X: ' + this.game.input.scale.x.toFixed(1) + ' Scale Y: ' + this.game.input.scale.x.toFixed(1));
+	        this.line('Screen X: ' + this.game.input.activePointer.screenX + ' Screen Y: ' + this.game.input.activePointer.screenY);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders the Sprites bounds. Note: This is really expensive as it has to calculate the bounds every time you call it!
+	    *
+	    * @method Phaser.Utils.Debug#spriteBounds
+	    * @param {Phaser.Sprite|Phaser.Image} sprite - The sprite to display the bounds of.
+	    * @param {string} [color] - Color of the debug info to be rendered (format is css color string).
+	    * @param {boolean} [filled=true] - Render the rectangle as a fillRect (default, true) or a strokeRect (false)
+	    */
+	    spriteBounds: function (sprite, color, filled) {
+
+	        var bounds = sprite.getBounds();
+
+	        bounds.x += this.game.camera.x;
+	        bounds.y += this.game.camera.y;
+
+	        this.rectangle(bounds, color, filled);
+
+	    },
+
+	    /**
+	    * Renders the Rope's segments. Note: This is really expensive as it has to calculate new segments every time you call it
+	    *
+	    * @method Phaser.Utils.Debug#ropeSegments
+	    * @param {Phaser.Rope} rope - The rope to display the segments of.
+	    * @param {string} [color] - Color of the debug info to be rendered (format is css color string).
+	    * @param {boolean} [filled=true] - Render the rectangle as a fillRect (default, true) or a strokeRect (false)
+	    */
+	    ropeSegments: function (rope, color, filled) {
+
+	        var segments = rope.segments;
+
+	        var self = this;
+
+	        segments.forEach(function(segment) {
+	            self.rectangle(segment, color, filled);
+	        }, this);
+
+	    },
+
+	    /**
+	    * Render debug infos (including name, bounds info, position and some other properties) about the Sprite.
+	    *
+	    * @method Phaser.Utils.Debug#spriteInfo
+	    * @param {Phaser.Sprite} sprite - The Sprite to display the information of.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    spriteInfo: function (sprite, x, y, color) {
+
+	        this.start(x, y, color);
+
+	        this.line('Sprite: ' + ' (' + sprite.width + ' x ' + sprite.height + ') anchor: ' + sprite.anchor.x + ' x ' + sprite.anchor.y);
+	        this.line('x: ' + sprite.x.toFixed(1) + ' y: ' + sprite.y.toFixed(1));
+	        this.line('angle: ' + sprite.angle.toFixed(1) + ' rotation: ' + sprite.rotation.toFixed(1));
+	        this.line('visible: ' + sprite.visible + ' in camera: ' + sprite.inCamera);
+	        this.line('bounds x: ' + sprite._bounds.x.toFixed(1) + ' y: ' + sprite._bounds.y.toFixed(1) + ' w: ' + sprite._bounds.width.toFixed(1) + ' h: ' + sprite._bounds.height.toFixed(1));
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders the sprite coordinates in local, positional and world space.
+	    *
+	    * @method Phaser.Utils.Debug#spriteCoords
+	    * @param {Phaser.Sprite|Phaser.Image} sprite - The sprite to display the coordinates for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    spriteCoords: function (sprite, x, y, color) {
+
+	        this.start(x, y, color, 100);
+
+	        if (sprite.name)
+	        {
+	            this.line(sprite.name);
+	        }
+
+	        this.line('x:', sprite.x.toFixed(2), 'y:', sprite.y.toFixed(2));
+	        this.line('pos x:', sprite.position.x.toFixed(2), 'pos y:', sprite.position.y.toFixed(2));
+	        this.line('world x:', sprite.world.x.toFixed(2), 'world y:', sprite.world.y.toFixed(2));
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders Line information in the given color.
+	    *
+	    * @method Phaser.Utils.Debug#lineInfo
+	    * @param {Phaser.Line} line - The Line to display the data for.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    lineInfo: function (line, x, y, color) {
+
+	        this.start(x, y, color, 80);
+	        this.line('start.x:', line.start.x.toFixed(2), 'start.y:', line.start.y.toFixed(2));
+	        this.line('end.x:', line.end.x.toFixed(2), 'end.y:', line.end.y.toFixed(2));
+	        this.line('length:', line.length.toFixed(2), 'angle:', line.angle);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders a single pixel at the given size.
+	    *
+	    * @method Phaser.Utils.Debug#pixel
+	    * @param {number} x - X position of the pixel to be rendered.
+	    * @param {number} y - Y position of the pixel to be rendered.
+	    * @param {string} [color] - Color of the pixel (format is css color string).
+	    * @param {number} [size=2] - The 'size' to render the pixel at.
+	    */
+	    pixel: function (x, y, color, size) {
+
+	        size = size || 2;
+
+	        this.start();
+	        this.context.fillStyle = color;
+	        this.context.fillRect(x, y, size, size);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders a Phaser geometry object including Rectangle, Circle, Point or Line.
+	    *
+	    * @method Phaser.Utils.Debug#geom
+	    * @param {Phaser.Rectangle|Phaser.Circle|Phaser.Point|Phaser.Line} object - The geometry object to render.
+	    * @param {string} [color] - Color of the debug info to be rendered (format is css color string).
+	    * @param {boolean} [filled=true] - Render the objected as a filled (default, true) or a stroked (false)
+	    * @param {number} [forceType=0] - Force rendering of a specific type. If 0 no type will be forced, otherwise 1 = Rectangle, 2 = Circle, 3 = Point and 4 = Line.
+	    */
+	    geom: function (object, color, filled, forceType) {
+
+	        if (filled === undefined) { filled = true; }
+	        if (forceType === undefined) { forceType = 0; }
+
+	        color = color || 'rgba(0,255,0,0.4)';
+
+	        this.start();
+
+	        this.context.fillStyle = color;
+	        this.context.strokeStyle = color;
+
+	        if (object instanceof Phaser.Rectangle || forceType === 1)
+	        {
+	            if (filled)
+	            {
+	                this.context.fillRect(object.x - this.game.camera.x, object.y - this.game.camera.y, object.width, object.height);
+	            }
+	            else
+	            {
+	                this.context.strokeRect(object.x - this.game.camera.x, object.y - this.game.camera.y, object.width, object.height);
+	            }
+	        }
+	        else if (object instanceof Phaser.Circle || forceType === 2)
+	        {
+	            this.context.beginPath();
+	            this.context.arc(object.x - this.game.camera.x, object.y - this.game.camera.y, object.radius, 0, Math.PI * 2, false);
+	            this.context.closePath();
+
+	            if (filled)
+	            {
+	                this.context.fill();
+	            }
+	            else
+	            {
+	                this.context.stroke();
+	            }
+	        }
+	        else if (object instanceof Phaser.Point || forceType === 3)
+	        {
+	            this.context.fillRect(object.x - this.game.camera.x, object.y - this.game.camera.y, 4, 4);
+	        }
+	        else if (object instanceof Phaser.Line || forceType === 4)
+	        {
+	            this.context.lineWidth = 1;
+	            this.context.beginPath();
+	            this.context.moveTo((object.start.x + 0.5) - this.game.camera.x, (object.start.y + 0.5) - this.game.camera.y);
+	            this.context.lineTo((object.end.x + 0.5) - this.game.camera.x, (object.end.y + 0.5) - this.game.camera.y);
+	            this.context.closePath();
+	            this.context.stroke();
+	        }
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders a Rectangle.
+	    *
+	    * @method Phaser.Utils.Debug#geom
+	    * @param {Phaser.Rectangle|object} object - The geometry object to render.
+	    * @param {string} [color] - Color of the debug info to be rendered (format is css color string).
+	    * @param {boolean} [filled=true] - Render the objected as a filled (default, true) or a stroked (false)
+	    */
+	    rectangle: function (object, color, filled) {
+
+	        if (filled === undefined) { filled = true; }
+
+	        color = color || 'rgba(0, 255, 0, 0.4)';
+
+	        this.start();
+
+	        if (filled)
+	        {
+	            this.context.fillStyle = color;
+	            this.context.fillRect(object.x - this.game.camera.x, object.y - this.game.camera.y, object.width, object.height);
+	        }
+	        else
+	        {
+	            this.context.strokeStyle = color;
+	            this.context.strokeRect(object.x - this.game.camera.x, object.y - this.game.camera.y, object.width, object.height);
+	        }
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render a string of text.
+	    *
+	    * @method Phaser.Utils.Debug#text
+	    * @param {string} text - The line of text to draw.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color] - Color of the debug info to be rendered (format is css color string).
+	    * @param {string} [font] - The font of text to draw.
+	    */
+	    text: function (text, x, y, color, font) {
+
+	        color = color || 'rgb(255,255,255)';
+	        font = font || '16px Courier';
+
+	        this.start();
+	        this.context.font = font;
+
+	        if (this.renderShadow)
+	        {
+	            this.context.fillStyle = 'rgb(0,0,0)';
+	            this.context.fillText(text, x + 1, y + 1);
+	        }
+
+	        this.context.fillStyle = color;
+	        this.context.fillText(text, x, y);
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Visually renders a QuadTree to the display.
+	    *
+	    * @method Phaser.Utils.Debug#quadTree
+	    * @param {Phaser.QuadTree} quadtree - The quadtree to render.
+	    * @param {string} color - The color of the lines in the quadtree.
+	    */
+	    quadTree: function (quadtree, color) {
+
+	        color = color || 'rgba(255,0,0,0.3)';
+
+	        this.start();
+
+	        var bounds = quadtree.bounds;
+
+	        if (quadtree.nodes.length === 0)
+	        {
+	            this.context.strokeStyle = color;
+	            this.context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+	            this.text('size: ' + quadtree.objects.length, bounds.x + 4, bounds.y + 16, 'rgb(0,200,0)', '12px Courier');
+
+	            this.context.strokeStyle = 'rgb(0,255,0)';
+
+	            for (var i = 0; i < quadtree.objects.length; i++)
+	            {
+	                this.context.strokeRect(quadtree.objects[i].x, quadtree.objects[i].y, quadtree.objects[i].width, quadtree.objects[i].height);
+	            }
+	        }
+	        else
+	        {
+	            for (var i = 0; i < quadtree.nodes.length; i++)
+	            {
+	                this.quadTree(quadtree.nodes[i]);
+	            }
+	        }
+
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Render a Sprites Physics body if it has one set. The body is rendered as a filled or stroked rectangle.
+	    * This only works for Arcade Physics, Ninja Physics (AABB and Circle only) and Box2D Physics bodies.
+	    * To display a P2 Physics body you should enable debug mode on the body when creating it.
+	    *
+	    * @method Phaser.Utils.Debug#body
+	    * @param {Phaser.Sprite} sprite - The Sprite who's body will be rendered.
+	    * @param {string} [color='rgba(0,255,0,0.4)'] - Color of the debug rectangle to be rendered. The format is a CSS color string such as '#ff0000' or 'rgba(255,0,0,0.5)'.
+	    * @param {boolean} [filled=true] - Render the body as a filled rectangle (true) or a stroked rectangle (false)
+	    */
+	    body: function (sprite, color, filled) {
+
+	        if (sprite.body)
+	        {
+	            this.start();
+
+	            if (sprite.body.type === Phaser.Physics.ARCADE)
+	            {
+	                Phaser.Physics.Arcade.Body.render(this.context, sprite.body, color, filled);
+	            }
+	            else if (sprite.body.type === Phaser.Physics.NINJA)
+	            {
+	                Phaser.Physics.Ninja.Body.render(this.context, sprite.body, color, filled);
+	            }
+	            else if (sprite.body.type === Phaser.Physics.BOX2D)
+	            {
+	                Phaser.Physics.Box2D.renderBody(this.context, sprite.body, color);
+	            }
+
+	            this.stop();
+	        }
+
+	    },
+
+	    /**
+	    * Render a Sprites Physic Body information.
+	    *
+	    * @method Phaser.Utils.Debug#bodyInfo
+	    * @param {Phaser.Sprite} sprite - The sprite to be rendered.
+	    * @param {number} x - X position of the debug info to be rendered.
+	    * @param {number} y - Y position of the debug info to be rendered.
+	    * @param {string} [color='rgb(255,255,255)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    bodyInfo: function (sprite, x, y, color) {
+
+	        if (sprite.body)
+	        {
+	            this.start(x, y, color, 210);
+
+	            if (sprite.body.type === Phaser.Physics.ARCADE)
+	            {
+	                Phaser.Physics.Arcade.Body.renderBodyInfo(this, sprite.body);
+	            }
+	            else if (sprite.body.type === Phaser.Physics.BOX2D)
+	            {
+	                this.game.physics.box2d.renderBodyInfo(this, sprite.body);
+	            }
+
+	            this.stop();
+	        }
+
+	    },
+
+	    /**
+	    * Renders 'debug draw' data for the Box2D world if it exists.
+	    * This uses the standard debug drawing feature of Box2D, so colors will be decided by
+	    * the Box2D engine.
+	    *
+	    * @method Phaser.Utils.Debug#box2dWorld
+	    */
+	    box2dWorld: function () {
+	    
+	        this.start();
+	        
+	        this.context.translate(-this.game.camera.view.x, -this.game.camera.view.y, 0);
+	        this.game.physics.box2d.renderDebugDraw(this.context);
+	        
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Renders 'debug draw' data for the given Box2D body.
+	    * This uses the standard debug drawing feature of Box2D, so colors will be decided by the Box2D engine.
+	    *
+	    * @method Phaser.Utils.Debug#box2dBody
+	    * @param {Phaser.Sprite} sprite - The sprite whos body will be rendered.
+	    * @param {string} [color='rgb(0,255,0)'] - color of the debug info to be rendered. (format is css color string).
+	    */
+	    box2dBody: function (body, color) {
+	    
+	        this.start();
+	        Phaser.Physics.Box2D.renderBody(this.context, body, color);
+	        this.stop();
+
+	    },
+
+	    /**
+	    * Destroy this object.
+	    *
+	    * @method Phaser.Utils.Debug#destroy
+	    */
+	    destroy: function () {
+	    
+	        PIXI.CanvasPool.remove(this);
+
+	    }
+
+	};
+
+	Debug.prototype.constructor = Debug;
+
+	module.exports = Debug;
+
+
+/***/ },
+/* 26 */
+/***/ function(module, exports, __webpack_require__) {
+
+	/**
+	* @author       Richard Davey <rich@photonstorm.com>
+	* @copyright    2015 Photon Storm Ltd.
+	* @license      {@link https://github.com/photonstorm/phaser/blob/master/license.txt|MIT License}
+	*/
+
+	var PIXI = __webpack_require__(15);
+
+	/**
+	* A BitmapData object contains a Canvas element to which you can draw anything you like via normal Canvas context operations.
+	* A single BitmapData can be used as the texture for one or many Images/Sprites. 
+	* So if you need to dynamically create a Sprite texture then they are a good choice.
+	*
+	* @class Phaser.BitmapData
+	* @constructor
+	* @param {Phaser.Game} game - A reference to the currently running game.
+	* @param {string} key - Internal Phaser reference key for the BitmapData.
+	* @param {number} [width=256] - The width of the BitmapData in pixels. If undefined or zero it's set to a default value.
+	* @param {number} [height=256] - The height of the BitmapData in pixels. If undefined or zero it's set to a default value.
+	*/
+	var BitmapData = function (game, key, width, height) {
+
+	    if (width === undefined || width === 0) { width = 256; }
+	    if (height === undefined || height === 0) { height = 256; }
+
+	    /**
+	    * @property {Phaser.Game} game - A reference to the currently running game.
+	    */
+	    this.game = game;
+
+	    /**
+	    * @property {string} key - The key of the BitmapData in the Cache, if stored there.
+	    */
+	    this.key = key;
+
+	    /**
+	    * @property {number} width - The width of the BitmapData in pixels.
+	    */
+	    this.width = width;
+
+	    /**
+	    * @property {number} height - The height of the BitmapData in pixels.
+	    */
+	    this.height = height;
+
+	    /**
+	    * @property {HTMLCanvasElement} canvas - The canvas to which this BitmapData draws.
+	    * @default
+	    */
+	    // this.canvas = Phaser.Canvas.create(width, height, '', true);
+	    this.canvas = PIXI.CanvasPool.create(this, width, height);
+
+	    /**
+	    * @property {CanvasRenderingContext2D} context - The 2d context of the canvas.
+	    * @default
+	    */
+	    this.context = this.canvas.getContext('2d', { alpha: true });
+
+	    /**
+	    * @property {CanvasRenderingContext2D} ctx - A reference to BitmapData.context.
+	    */
+	    this.ctx = this.context;
+
+	    /**
+	    * @property {ImageData} imageData - The context image data.
+	    * Please note that a call to BitmapData.draw() or BitmapData.copy() does not update immediately this property for performance reason. Use BitmapData.update() to do so.
+	    * This property is updated automatically after the first game loop, according to the dirty flag property.
+	    */
+	    this.imageData = this.context.getImageData(0, 0, width, height);
+
+	    /**
+	    * A Uint8ClampedArray view into BitmapData.buffer.
+	    * Note that this is unavailable in some browsers (such as Epic Browser due to its security restrictions)
+	    * @property {Uint8ClampedArray} data
+	    */
+	    this.data = null;
+
+	    if (this.imageData)
+	    {
+	        this.data = this.imageData.data;
+	    }
+
+	    /**
+	    * @property {Uint32Array} pixels - An Uint32Array view into BitmapData.buffer.
+	    */
+	    this.pixels = null;
+
+	    /**
+	    * @property {ArrayBuffer} buffer - An ArrayBuffer the same size as the context ImageData.
+	    */
+	    if (this.data)
+	    {
+	        if (this.imageData.data.buffer)
+	        {
+	            this.buffer = this.imageData.data.buffer;
+	            this.pixels = new Uint32Array(this.buffer);
+	        }
+	        else
+	        {
+	            if (window['ArrayBuffer'])
+	            {
+	                this.buffer = new ArrayBuffer(this.imageData.data.length);
+	                this.pixels = new Uint32Array(this.buffer);
+	            }
+	            else
+	            {
+	                this.pixels = this.imageData.data;
+	            }
+	        }
+	    }
+
+	    /**
+	    * @property {PIXI.BaseTexture} baseTexture - The PIXI.BaseTexture.
+	    * @default
+	    */
+	    this.baseTexture = new PIXI.BaseTexture(this.canvas);
+
+	    /**
+	    * @property {PIXI.Texture} texture - The PIXI.Texture.
+	    * @default
+	    */
+	    this.texture = new PIXI.Texture(this.baseTexture);
+
+	    /**
+	    * @property {Phaser.Frame} textureFrame - The Frame this BitmapData uses for rendering.
+	    * @default
+	    */
+	    this.textureFrame = new Phaser.Frame(0, 0, 0, width, height, 'bitmapData');
+
+	    this.texture.frame = this.textureFrame;
+
+	    /**
+	    * @property {number} type - The const type of this object.
+	    * @default
+	    */
+	    this.type = Phaser.BITMAPDATA;
+
+	    /**
+	    * @property {boolean} disableTextureUpload - If disableTextureUpload is true this BitmapData will never send its image data to the GPU when its dirty flag is true.
+	    */
+	    this.disableTextureUpload = false;
+
+	    /**
+	    * @property {boolean} dirty - If dirty this BitmapData will be re-rendered.
+	    */
+	    this.dirty = false;
+
+	    //  Aliases
+	    this.cls = this.clear;
+
+	    /**
+	    * @property {number} _image - Internal cache var.
+	    * @private
+	    */
+	    this._image = null;
+
+	    /**
+	    * @property {Phaser.Point} _pos - Internal cache var.
+	    * @private
+	    */
+	    this._pos = new Phaser.Point();
+
+	    /**
+	    * @property {Phaser.Point} _size - Internal cache var.
+	    * @private
+	    */
+	    this._size = new Phaser.Point();
+
+	    /**
+	    * @property {Phaser.Point} _scale - Internal cache var.
+	    * @private
+	    */
+	    this._scale = new Phaser.Point();
+
+	    /**
+	    * @property {number} _rotate - Internal cache var.
+	    * @private
+	    */
+	    this._rotate = 0;
+
+	    /**
+	    * @property {object} _alpha - Internal cache var.
+	    * @private
+	    */
+	    this._alpha = { prev: 1, current: 1 };
+
+	    /**
+	    * @property {Phaser.Point} _anchor - Internal cache var.
+	    * @private
+	    */
+	    this._anchor = new Phaser.Point();
+
+	    /**
+	    * @property {number} _tempR - Internal cache var.
+	    * @private
+	    */
+	    this._tempR = 0;
+
+	    /**
+	    * @property {number} _tempG - Internal cache var.
+	    * @private
+	    */
+	    this._tempG = 0;
+
+	    /**
+	    * @property {number} _tempB - Internal cache var.
+	    * @private
+	    */
+	    this._tempB = 0;
+
+	    /**
+	    * @property {Phaser.Circle} _circle - Internal cache var.
+	    * @private
+	    */
+	    this._circle = new Phaser.Circle();
+
+	    /**
+	    * @property {HTMLCanvasElement} _swapCanvas - A swap canvas.
+	    * @private
+	    */
+	    this._swapCanvas = PIXI.CanvasPool.create(this, width, height);
+
+	};
+
+	BitmapData.prototype = {
+
+	    /**
+	    * Shifts the contents of this BitmapData by the distances given.
+	    * 
+	    * The image will wrap-around the edges on all sides if the wrap argument is true (the default).
+	    *
+	    * @method Phaser.BitmapData#move
+	    * @param {integer} x - The amount of pixels to horizontally shift the canvas by. Use a negative value to shift to the left, positive to the right.
+	    * @param {integer} y - The amount of pixels to vertically shift the canvas by. Use a negative value to shift up, positive to shift down.
+	    * @param {boolean} [wrap=true] - Wrap the content of the BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    move: function (x, y, wrap) {
+
+	        if (x !== 0)
+	        {
+	            this.moveH(x, wrap);
+	        }
+
+	        if (y !== 0)
+	        {
+	            this.moveV(y, wrap);
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Shifts the contents of this BitmapData horizontally.
+	    * 
+	    * The image will wrap-around the sides if the wrap argument is true (the default).
+	    *
+	    * @method Phaser.BitmapData#moveH
+	    * @param {integer} distance - The amount of pixels to horizontally shift the canvas by. Use a negative value to shift to the left, positive to the right.
+	    * @param {boolean} [wrap=true] - Wrap the content of the BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    moveH: function (distance, wrap) {
+
+	        if (wrap === undefined) { wrap = true; }
+
+	        var c = this._swapCanvas;
+	        var ctx = c.getContext('2d');
+	        var h = this.height;
+	        var src = this.canvas;
+
+	        ctx.clearRect(0, 0, this.width, this.height);
+
+	        if (distance < 0)
+	        {
+	            distance = Math.abs(distance);
+
+	            //  Moving to the left
+	            var w = this.width - distance;
+
+	            //  Left-hand chunk
+	            if (wrap)
+	            {
+	                ctx.drawImage(src, 0, 0, distance, h, w, 0, distance, h);
+	            }
+
+	            //  Rest of the image
+	            ctx.drawImage(src, distance, 0, w, h, 0, 0, w, h);
+	        }
+	        else
+	        {
+	            //  Moving to the right
+	            var w = this.width - distance;
+
+	            //  Right-hand chunk
+	            if (wrap)
+	            {
+	                ctx.drawImage(src, w, 0, distance, h, 0, 0, distance, h);
+	            }
+
+	            //  Rest of the image
+	            ctx.drawImage(src, 0, 0, w, h, distance, 0, w, h);
+	        }
+
+	        this.clear();
+
+	        return this.copy(this._swapCanvas);
+
+	    },
+
+	    /**
+	    * Shifts the contents of this BitmapData vertically.
+	    * 
+	    * The image will wrap-around the sides if the wrap argument is true (the default).
+	    *
+	    * @method Phaser.BitmapData#moveV
+	    * @param {integer} distance - The amount of pixels to vertically shift the canvas by. Use a negative value to shift up, positive to shift down.
+	    * @param {boolean} [wrap=true] - Wrap the content of the BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    moveV: function (distance, wrap) {
+
+	        if (wrap === undefined) { wrap = true; }
+
+	        var c = this._swapCanvas;
+	        var ctx = c.getContext('2d');
+	        var w = this.width;
+	        var src = this.canvas;
+
+	        ctx.clearRect(0, 0, this.width, this.height);
+
+	        if (distance < 0)
+	        {
+	            distance = Math.abs(distance);
+
+	            //  Moving up
+	            var h = this.height - distance;
+
+	            //  Top chunk
+	            if (wrap)
+	            {
+	                ctx.drawImage(src, 0, 0, w, distance, 0, h, w, distance);
+	            }
+
+	            //  Rest of the image
+	            ctx.drawImage(src, 0, distance, w, h, 0, 0, w, h);
+	        }
+	        else
+	        {
+	            //  Moving down
+	            var h = this.height - distance;
+
+	            //  Bottom chunk
+	            if (wrap)
+	            {
+	                ctx.drawImage(src, 0, h, w, distance, 0, 0, w, distance);
+	            }
+
+	            //  Rest of the image
+	            ctx.drawImage(src, 0, 0, w, h, 0, distance, w, h);
+	        }
+
+	        this.clear();
+
+	        return this.copy(this._swapCanvas);
+
+	    },
+
+	    /**
+	    * Updates the given objects so that they use this BitmapData as their texture.
+	    * This will replace any texture they will currently have set.
+	    *
+	    * @method Phaser.BitmapData#add
+	    * @param {Phaser.Sprite|Phaser.Sprite[]|Phaser.Image|Phaser.Image[]} object - Either a single Sprite/Image or an Array of Sprites/Images.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    add: function (object) {
+
+	        if (Array.isArray(object))
+	        {
+	            for (var i = 0; i < object.length; i++)
+	            {
+	                if (object[i]['loadTexture'])
+	                {
+	                    object[i].loadTexture(this);
+	                }
+	            }
+	        }
+	        else
+	        {
+	            object.loadTexture(this);
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Takes the given Game Object, resizes this BitmapData to match it and then draws it into this BitmapDatas canvas, ready for further processing.
+	    * The source game object is not modified by this operation.
+	    * If the source object uses a texture as part of a Texture Atlas or Sprite Sheet, only the current frame will be used for sizing.
+	    * If a string is given it will assume it's a cache key and look in Phaser.Cache for an image key matching the string.
+	    *
+	    * @method Phaser.BitmapData#load
+	    * @param {Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapData|Image|HTMLCanvasElement|string} source - The object that will be used to populate this BitmapData. If you give a string it will try and find the Image in the Game.Cache first.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    load: function (source) {
+
+	        if (typeof source === 'string')
+	        {
+	            source = this.game.cache.getImage(source);
+	        }
+
+	        if (source)
+	        {
+	            this.resize(source.width, source.height);
+	            this.cls();
+	        }
+	        else
+	        {
+	            return;
+	        }
+
+	        this.draw(source);
+
+	        this.update();
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Clears the BitmapData context using a clearRect.
+	    *
+	    * @method Phaser.BitmapData#cls
+	    */
+
+	    /**
+	    * Clears the BitmapData context using a clearRect.
+	    *
+	    * You can optionally define the area to clear.
+	    * If the arguments are left empty it will clear the entire canvas.
+	    *
+	    * @method Phaser.BitmapData#clear
+	    * @param {number} [x=0] - The x coordinate of the top-left of the area to clear.
+	    * @param {number} [y=0] - The y coordinate of the top-left of the area to clear.
+	    * @param {number} [width] - The width of the area to clear. If undefined it will use BitmapData.width.
+	    * @param {number} [height] - The height of the area to clear. If undefined it will use BitmapData.height.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    clear: function (x, y, width, height) {
+
+	        if (x === undefined) { x = 0; }
+	        if (y === undefined) { y = 0; }
+	        if (width === undefined) { width = this.width; }
+	        if (height === undefined) { height = this.height; }
+
+	        this.context.clearRect(x, y, width, height);
+
+	        this.update();
+
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Fills the BitmapData with the given color.
+	    *
+	    * @method Phaser.BitmapData#fill
+	    * @param {number} r - The red color value, between 0 and 0xFF (255).
+	    * @param {number} g - The green color value, between 0 and 0xFF (255).
+	    * @param {number} b - The blue color value, between 0 and 0xFF (255).
+	    * @param {number} [a=1] - The alpha color value, between 0 and 1.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    fill: function (r, g, b, a) {
+
+	        if (a === undefined) { a = 1; }
+
+	        this.context.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+	        this.context.fillRect(0, 0, this.width, this.height);
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Creates a new Image element by converting this BitmapDatas canvas into a dataURL.
+	    *
+	    * The image is then stored in the image Cache using the key given.
+	    *
+	    * Finally a PIXI.Texture is created based on the image and returned.
+	    *
+	    * You can apply the texture to a sprite or any other supporting object by using either the
+	    * key or the texture. First call generateTexture:
+	    *
+	    * `var texture = bitmapdata.generateTexture('ball');`
+	    *
+	    * Then you can either apply the texture to a sprite:
+	    * 
+	    * `game.add.sprite(0, 0, texture);`
+	    *
+	    * or by using the string based key:
+	    *
+	    * `game.add.sprite(0, 0, 'ball');`
+	    *
+	    * @method Phaser.BitmapData#generateTexture
+	    * @param {string} key - The key which will be used to store the image in the Cache.
+	    * @return {PIXI.Texture} The newly generated texture.
+	    */
+	    generateTexture: function (key) {
+
+	        var image = new Image();
+
+	        image.src = this.canvas.toDataURL("image/png");
+
+	        var obj = this.game.cache.addImage(key, '', image);
+
+	        return new PIXI.Texture(obj.base);
+
+	    },
+
+	    /**
+	    * Resizes the BitmapData. This changes the size of the underlying canvas and refreshes the buffer.
+	    *
+	    * @method Phaser.BitmapData#resize
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    resize: function (width, height) {
+
+	        if (width !== this.width || height !== this.height)
+	        {
+	            this.width = width;
+	            this.height = height;
+
+	            this.canvas.width = width;
+	            this.canvas.height = height;
+
+	            this._swapCanvas.width = width;
+	            this._swapCanvas.height = height;
+
+	            this.baseTexture.width = width;
+	            this.baseTexture.height = height;
+
+	            this.textureFrame.width = width;
+	            this.textureFrame.height = height;
+
+	            this.texture.width = width;
+	            this.texture.height = height;
+
+	            this.texture.crop.width = width;
+	            this.texture.crop.height = height;
+
+	            this.update();
+	            this.dirty = true;
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * This re-creates the BitmapData.imageData from the current context.
+	    * It then re-builds the ArrayBuffer, the data Uint8ClampedArray reference and the pixels Int32Array.
+	    * If not given the dimensions defaults to the full size of the context.
+	    *
+	    * @method Phaser.BitmapData#update
+	    * @param {number} [x=0] - The x coordinate of the top-left of the image data area to grab from.
+	    * @param {number} [y=0] - The y coordinate of the top-left of the image data area to grab from.
+	    * @param {number} [width=1] - The width of the image data area.
+	    * @param {number} [height=1] - The height of the image data area.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    update: function (x, y, width, height) {
+
+	        if (x === undefined) { x = 0; }
+	        if (y === undefined) { y = 0; }
+	        if (width === undefined) { width = Math.max(1, this.width); }
+	        if (height === undefined) { height = Math.max(1, this.height); }
+
+	        this.imageData = this.context.getImageData(x, y, width, height);
+	        this.data = this.imageData.data;
+
+	        if (this.imageData.data.buffer)
+	        {
+	            this.buffer = this.imageData.data.buffer;
+	            this.pixels = new Uint32Array(this.buffer);
+	        }
+	        else
+	        {
+	            if (window['ArrayBuffer'])
+	            {
+	                this.buffer = new ArrayBuffer(this.imageData.data.length);
+	                this.pixels = new Uint32Array(this.buffer);
+	            }
+	            else
+	            {
+	                this.pixels = this.imageData.data;
+	            }
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Scans through the area specified in this BitmapData and sends a color object for every pixel to the given callback.
+	    * The callback will be sent a color object with 6 properties: `{ r: number, g: number, b: number, a: number, color: number, rgba: string }`.
+	    * Where r, g, b and a are integers between 0 and 255 representing the color component values for red, green, blue and alpha.
+	    * The `color` property is an Int32 of the full color. Note the endianess of this will change per system.
+	    * The `rgba` property is a CSS style rgba() string which can be used with context.fillStyle calls, among others.
+	    * The callback will also be sent the pixels x and y coordinates respectively.
+	    * The callback must return either `false`, in which case no change will be made to the pixel, or a new color object.
+	    * If a new color object is returned the pixel will be set to the r, g, b and a color values given within it.
+	    *
+	    * @method Phaser.BitmapData#processPixelRGB
+	    * @param {function} callback - The callback that will be sent each pixel color object to be processed.
+	    * @param {object} callbackContext - The context under which the callback will be called.
+	    * @param {number} [x=0] - The x coordinate of the top-left of the region to process from.
+	    * @param {number} [y=0] - The y coordinate of the top-left of the region to process from.
+	    * @param {number} [width] - The width of the region to process.
+	    * @param {number} [height] - The height of the region to process.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    processPixelRGB: function (callback, callbackContext, x, y, width, height) {
+
+	        if (x === undefined) { x = 0; }
+	        if (y === undefined) { y = 0; }
+	        if (width === undefined) { width = this.width; }
+	        if (height === undefined) { height = this.height; }
+
+	        var w = x + width;
+	        var h = y + height;
+	        var pixel = Phaser.Color.createColor();
+	        var result = { r: 0, g: 0, b: 0, a: 0 };
+	        var dirty = false;
+
+	        for (var ty = y; ty < h; ty++)
+	        {
+	            for (var tx = x; tx < w; tx++)
+	            {
+	                Phaser.Color.unpackPixel(this.getPixel32(tx, ty), pixel);
+
+	                result = callback.call(callbackContext, pixel, tx, ty);
+
+	                if (result !== false && result !== null && result !== undefined)
+	                {
+	                    this.setPixel32(tx, ty, result.r, result.g, result.b, result.a, false);
+	                    dirty = true;
+	                }
+	            }
+	        }
+
+	        if (dirty)
+	        {
+	            this.context.putImageData(this.imageData, 0, 0);
+	            this.dirty = true;
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Scans through the area specified in this BitmapData and sends the color for every pixel to the given callback along with its x and y coordinates.
+	    * Whatever value the callback returns is set as the new color for that pixel, unless it returns the same color, in which case it's skipped.
+	    * Note that the format of the color received will be different depending on if the system is big or little endian.
+	    * It is expected that your callback will deal with endianess. If you'd rather Phaser did it then use processPixelRGB instead.
+	    * The callback will also be sent the pixels x and y coordinates respectively.
+	    *
+	    * @method Phaser.BitmapData#processPixel
+	    * @param {function} callback - The callback that will be sent each pixel color to be processed.
+	    * @param {object} callbackContext - The context under which the callback will be called.
+	    * @param {number} [x=0] - The x coordinate of the top-left of the region to process from.
+	    * @param {number} [y=0] - The y coordinate of the top-left of the region to process from.
+	    * @param {number} [width] - The width of the region to process.
+	    * @param {number} [height] - The height of the region to process.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    processPixel: function (callback, callbackContext, x, y, width, height) {
+
+	        if (x === undefined) { x = 0; }
+	        if (y === undefined) { y = 0; }
+	        if (width === undefined) { width = this.width; }
+	        if (height === undefined) { height = this.height; }
+
+	        var w = x + width;
+	        var h = y + height;
+	        var pixel = 0;
+	        var result = 0;
+	        var dirty = false;
+
+	        for (var ty = y; ty < h; ty++)
+	        {
+	            for (var tx = x; tx < w; tx++)
+	            {
+	                pixel = this.getPixel32(tx, ty);
+	                result = callback.call(callbackContext, pixel, tx, ty);
+
+	                if (result !== pixel)
+	                {
+	                    this.pixels[ty * this.width + tx] = result;
+	                    dirty = true;
+	                }
+	            }
+	        }
+
+	        if (dirty)
+	        {
+	            this.context.putImageData(this.imageData, 0, 0);
+	            this.dirty = true;
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Replaces all pixels matching one color with another. The color values are given as two sets of RGBA values.
+	    * An optional region parameter controls if the replacement happens in just a specific area of the BitmapData or the entire thing. 
+	    *
+	    * @method Phaser.BitmapData#replaceRGB
+	    * @param {number} r1 - The red color value to be replaced. Between 0 and 255.
+	    * @param {number} g1 - The green color value to be replaced. Between 0 and 255.
+	    * @param {number} b1 - The blue color value to be replaced. Between 0 and 255.
+	    * @param {number} a1 - The alpha color value to be replaced. Between 0 and 255.
+	    * @param {number} r2 - The red color value that is the replacement color. Between 0 and 255.
+	    * @param {number} g2 - The green color value that is the replacement color. Between 0 and 255.
+	    * @param {number} b2 - The blue color value that is the replacement color. Between 0 and 255.
+	    * @param {number} a2 - The alpha color value that is the replacement color. Between 0 and 255.
+	    * @param {Phaser.Rectangle} [region] - The area to perform the search over. If not given it will replace over the whole BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    replaceRGB: function (r1, g1, b1, a1, r2, g2, b2, a2, region) {
+
+	        var sx = 0;
+	        var sy = 0;
+	        var w = this.width;
+	        var h = this.height;
+	        var source = Phaser.Color.packPixel(r1, g1, b1, a1);
+
+	        if (region !== undefined && region instanceof Phaser.Rectangle)
+	        {
+	            sx = region.x;
+	            sy = region.y;
+	            w = region.width;
+	            h = region.height;
+	        }
+
+	        for (var y = 0; y < h; y++)
+	        {
+	            for (var x = 0; x < w; x++)
+	            {
+	                if (this.getPixel32(sx + x, sy + y) === source)
+	                {
+	                    this.setPixel32(sx + x, sy + y, r2, g2, b2, a2, false);
+	                }
+	            }
+	        }
+
+	        this.context.putImageData(this.imageData, 0, 0);
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the hue, saturation and lightness values on every pixel in the given region, or the whole BitmapData if no region was specified.
+	    *
+	    * @method Phaser.BitmapData#setHSL
+	    * @param {number} [h=null] - The hue, in the range 0 - 1.
+	    * @param {number} [s=null] - The saturation, in the range 0 - 1.
+	    * @param {number} [l=null] - The lightness, in the range 0 - 1.
+	    * @param {Phaser.Rectangle} [region] - The area to perform the operation on. If not given it will run over the whole BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    setHSL: function (h, s, l, region) {
+
+	        if (h === undefined || h === null) { h = false; }
+	        if (s === undefined || s === null) { s = false; }
+	        if (l === undefined || l === null) { l = false; }
+
+	        if (!h && !s && !l)
+	        {
+	            return;
+	        }
+
+	        if (region === undefined)
+	        {
+	            region = new Phaser.Rectangle(0, 0, this.width, this.height);
+	        }
+
+	        var pixel = Phaser.Color.createColor();
+
+	        for (var y = region.y; y < region.bottom; y++)
+	        {
+	            for (var x = region.x; x < region.right; x++)
+	            {
+	                Phaser.Color.unpackPixel(this.getPixel32(x, y), pixel, true);
+
+	                if (h)
+	                {
+	                    pixel.h = h;
+	                }
+
+	                if (s)
+	                {
+	                    pixel.s = s;
+	                }
+
+	                if (l)
+	                {
+	                    pixel.l = l;
+	                }
+
+	                Phaser.Color.HSLtoRGB(pixel.h, pixel.s, pixel.l, pixel);
+	                this.setPixel32(x, y, pixel.r, pixel.g, pixel.b, pixel.a, false);
+	            }
+	        }
+
+	        this.context.putImageData(this.imageData, 0, 0);
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Shifts any or all of the hue, saturation and lightness values on every pixel in the given region, or the whole BitmapData if no region was specified.
+	    * Shifting will add the given value onto the current h, s and l values, not replace them.
+	    * The hue is wrapped to keep it within the range 0 to 1. Saturation and lightness are clamped to not exceed 1.
+	    *
+	    * @method Phaser.BitmapData#shiftHSL
+	    * @param {number} [h=null] - The amount to shift the hue by.
+	    * @param {number} [s=null] - The amount to shift the saturation by.
+	    * @param {number} [l=null] - The amount to shift the lightness by.
+	    * @param {Phaser.Rectangle} [region] - The area to perform the operation on. If not given it will run over the whole BitmapData.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    shiftHSL: function (h, s, l, region) {
+
+	        if (h === undefined || h === null) { h = false; }
+	        if (s === undefined || s === null) { s = false; }
+	        if (l === undefined || l === null) { l = false; }
+
+	        if (!h && !s && !l)
+	        {
+	            return;
+	        }
+
+	        if (region === undefined)
+	        {
+	            region = new Phaser.Rectangle(0, 0, this.width, this.height);
+	        }
+
+	        var pixel = Phaser.Color.createColor();
+
+	        for (var y = region.y; y < region.bottom; y++)
+	        {
+	            for (var x = region.x; x < region.right; x++)
+	            {
+	                Phaser.Color.unpackPixel(this.getPixel32(x, y), pixel, true);
+
+	                if (h)
+	                {
+	                    pixel.h = this.game.math.wrap(pixel.h + h, 0, 1);
+	                }
+
+	                if (s)
+	                {
+	                    pixel.s = this.game.math.limitValue(pixel.s + s, 0, 1);
+	                }
+
+	                if (l)
+	                {
+	                    pixel.l = this.game.math.limitValue(pixel.l + l, 0, 1);
+	                }
+
+	                Phaser.Color.HSLtoRGB(pixel.h, pixel.s, pixel.l, pixel);
+	                this.setPixel32(x, y, pixel.r, pixel.g, pixel.b, pixel.a, false);
+	            }
+	        }
+
+	        this.context.putImageData(this.imageData, 0, 0);
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the color of the given pixel to the specified red, green, blue and alpha values.
+	    *
+	    * @method Phaser.BitmapData#setPixel32
+	    * @param {number} x - The x coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} y - The y coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} red - The red color value, between 0 and 0xFF (255).
+	    * @param {number} green - The green color value, between 0 and 0xFF (255).
+	    * @param {number} blue - The blue color value, between 0 and 0xFF (255).
+	    * @param {number} alpha - The alpha color value, between 0 and 0xFF (255).
+	    * @param {boolean} [immediate=true] - If `true` the context.putImageData will be called and the dirty flag set.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    setPixel32: function (x, y, red, green, blue, alpha, immediate) {
+
+	        if (immediate === undefined) { immediate = true; }
+
+	        if (x >= 0 && x <= this.width && y >= 0 && y <= this.height)
+	        {
+	            if (Phaser.Device.LITTLE_ENDIAN)
+	            {
+	                this.pixels[y * this.width + x] = (alpha << 24) | (blue << 16) | (green << 8) | red;
+	            }
+	            else
+	            {
+	                this.pixels[y * this.width + x] = (red << 24) | (green << 16) | (blue << 8) | alpha;
+	            }
+
+	            if (immediate)
+	            {
+	                this.context.putImageData(this.imageData, 0, 0);
+	                this.dirty = true;
+	            }
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the color of the given pixel to the specified red, green and blue values.
+	    *
+	    * @method Phaser.BitmapData#setPixel
+	    * @param {number} x - The x coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} y - The y coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} red - The red color value, between 0 and 0xFF (255).
+	    * @param {number} green - The green color value, between 0 and 0xFF (255).
+	    * @param {number} blue - The blue color value, between 0 and 0xFF (255).
+	    * @param {boolean} [immediate=true] - If `true` the context.putImageData will be called and the dirty flag set.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    setPixel: function (x, y, red, green, blue, immediate) {
+
+	        return this.setPixel32(x, y, red, green, blue, 255, immediate);
+
+	    },
+
+	    /**
+	    * Get the color of a specific pixel in the context into a color object.
+	    * If you have drawn anything to the BitmapData since it was created you must call BitmapData.update to refresh the array buffer,
+	    * otherwise this may return out of date color values, or worse - throw a run-time error as it tries to access an array element that doesn't exist.
+	    *
+	    * @method Phaser.BitmapData#getPixel
+	    * @param {number} x - The x coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} y - The y coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {object} [out] - An object into which 4 properties will be created: r, g, b and a. If not provided a new object will be created.
+	    * @return {object} An object with the red, green, blue and alpha values set in the r, g, b and a properties.
+	    */
+	    getPixel: function (x, y, out) {
+
+	        if (!out)
+	        {
+	            out = Phaser.Color.createColor();
+	        }
+
+	        var index = ~~(x + (y * this.width));
+
+	        index *= 4;
+
+	        out.r = this.data[index];
+	        out.g = this.data[++index];
+	        out.b = this.data[++index];
+	        out.a = this.data[++index];
+
+	        return out;
+
+	    },
+
+	    /**
+	    * Get the color of a specific pixel including its alpha value.
+	    * If you have drawn anything to the BitmapData since it was created you must call BitmapData.update to refresh the array buffer,
+	    * otherwise this may return out of date color values, or worse - throw a run-time error as it tries to access an array element that doesn't exist.
+	    * Note that on little-endian systems the format is 0xAABBGGRR and on big-endian the format is 0xRRGGBBAA.
+	    *
+	    * @method Phaser.BitmapData#getPixel32
+	    * @param {number} x - The x coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} y - The y coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @return {number} A native color value integer (format: 0xAARRGGBB)
+	    */
+	    getPixel32: function (x, y) {
+
+	        if (x >= 0 && x <= this.width && y >= 0 && y <= this.height)
+	        {
+	            return this.pixels[y * this.width + x];
+	        }
+
+	    },
+
+	    /**
+	    * Get the color of a specific pixel including its alpha value as a color object containing r,g,b,a and rgba properties.
+	    * If you have drawn anything to the BitmapData since it was created you must call BitmapData.update to refresh the array buffer,
+	    * otherwise this may return out of date color values, or worse - throw a run-time error as it tries to access an array element that doesn't exist.
+	    *
+	    * @method Phaser.BitmapData#getPixelRGB
+	    * @param {number} x - The x coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {number} y - The y coordinate of the pixel to be set. Must lay within the dimensions of this BitmapData.
+	    * @param {object} [out] - An object into which 3 properties will be created: r, g and b. If not provided a new object will be created.
+	    * @param {boolean} [hsl=false] - Also convert the rgb values into hsl?
+	    * @param {boolean} [hsv=false] - Also convert the rgb values into hsv?
+	    * @return {object} An object with the red, green and blue values set in the r, g and b properties.
+	    */
+	    getPixelRGB: function (x, y, out, hsl, hsv) {
+
+	        return Phaser.Color.unpackPixel(this.getPixel32(x, y), out, hsl, hsv);
+
+	    },
+
+	    /**
+	    * Gets all the pixels from the region specified by the given Rectangle object.
+	    *
+	    * @method Phaser.BitmapData#getPixels
+	    * @param {Phaser.Rectangle} rect - The Rectangle region to get.
+	    * @return {ImageData} Returns a ImageData object containing a Uint8ClampedArray data property.
+	    */
+	    getPixels: function (rect) {
+
+	        return this.context.getImageData(rect.x, rect.y, rect.width, rect.height);
+
+	    },
+
+	    /**
+	    * Scans the BitmapData, pixel by pixel, until it encounters a pixel that isn't transparent (i.e. has an alpha value > 0).
+	    * It then stops scanning and returns an object containing the color of the pixel in r, g and b properties and the location in the x and y properties.
+	    * 
+	    * The direction parameter controls from which direction it should start the scan:
+	    * 
+	    * 0 = top to bottom
+	    * 1 = bottom to top
+	    * 2 = left to right
+	    * 3 = right to left
+	    *
+	    * @method Phaser.BitmapData#getFirstPixel
+	    * @param {number} [direction=0] - The direction in which to scan for the first pixel. 0 = top to bottom, 1 = bottom to top, 2 = left to right and 3 = right to left.
+	    * @return {object} Returns an object containing the color of the pixel in the `r`, `g` and `b` properties and the location in the `x` and `y` properties.
+	    */
+	    getFirstPixel: function (direction) {
+
+	        if (direction === undefined) { direction = 0; }
+
+	        var pixel = Phaser.Color.createColor();
+
+	        var x = 0;
+	        var y = 0;
+	        var v = 1;
+	        var scan = false;
+
+	        if (direction === 1)
+	        {
+	            v = -1;
+	            y = this.height;
+	        }
+	        else if (direction === 3)
+	        {
+	            v = -1;
+	            x = this.width;
+	        }
+
+	        do {
+
+	            Phaser.Color.unpackPixel(this.getPixel32(x, y), pixel);
+
+	            if (direction === 0 || direction === 1)
+	            {
+	                //  Top to Bottom / Bottom to Top
+	                x++;
+
+	                if (x === this.width)
+	                {
+	                    x = 0;
+	                    y += v;
+
+	                    if (y >= this.height || y <= 0)
+	                    {
+	                        scan = true;
+	                    }
+	                }
+	            }
+	            else if (direction === 2 || direction === 3)
+	            {
+	                //  Left to Right / Right to Left
+	                y++;
+
+	                if (y === this.height)
+	                {
+	                    y = 0;
+	                    x += v;
+
+	                    if (x >= this.width || x <= 0)
+	                    {
+	                        scan = true;
+	                    }
+	                }
+	            }
+	        }
+	        while (pixel.a === 0 && !scan);
+
+	        pixel.x = x;
+	        pixel.y = y;
+
+	        return pixel;
+
+	    },
+
+	    /**
+	    * Scans the BitmapData and calculates the bounds. This is a rectangle that defines the extent of all non-transparent pixels.
+	    * The rectangle returned will extend from the top-left of the image to the bottom-right, excluding transparent pixels.
+	    *
+	    * @method Phaser.BitmapData#getBounds
+	    * @param {Phaser.Rectangle} [rect] - If provided this Rectangle object will be populated with the bounds, otherwise a new object will be created.
+	    * @return {Phaser.Rectangle} A Rectangle whose dimensions encompass the full extent of non-transparent pixels in this BitmapData.
+	    */
+	    getBounds: function (rect) {
+
+	        if (rect === undefined) { rect = new Phaser.Rectangle(); }
+
+	        rect.x = this.getFirstPixel(2).x;
+
+	        //  If we hit this, there's no point scanning any more, the image is empty
+	        if (rect.x === this.width)
+	        {
+	            return rect.setTo(0, 0, 0, 0);
+	        }
+
+	        rect.y = this.getFirstPixel(0).y;
+	        rect.width = (this.getFirstPixel(3).x - rect.x) + 1;
+	        rect.height = (this.getFirstPixel(1).y - rect.y) + 1;
+
+	        return rect;
+
+	    },
+
+	    /**
+	    * Creates a new Phaser.Image object, assigns this BitmapData to be its texture, adds it to the world then returns it.
+	    *
+	    * @method Phaser.BitmapData#addToWorld
+	    * @param {number} [x=0] - The x coordinate to place the Image at.
+	    * @param {number} [y=0] - The y coordinate to place the Image at.
+	    * @param {number} [anchorX=0] - Set the x anchor point of the Image. A value between 0 and 1, where 0 is the top-left and 1 is bottom-right.
+	    * @param {number} [anchorY=0] - Set the y anchor point of the Image. A value between 0 and 1, where 0 is the top-left and 1 is bottom-right.
+	    * @param {number} [scaleX=1] - The horizontal scale factor of the Image. A value of 1 means no scaling. 2 would be twice the size, and so on.
+	    * @param {number} [scaleY=1] - The vertical scale factor of the Image. A value of 1 means no scaling. 2 would be twice the size, and so on.
+	    * @return {Phaser.Image} The newly added Image object.
+	    */
+	    addToWorld: function (x, y, anchorX, anchorY, scaleX, scaleY) {
+
+	        scaleX = scaleX || 1;
+	        scaleY = scaleY || 1;
+
+	        var image = this.game.add.image(x, y, this);
+
+	        image.anchor.set(anchorX, anchorY);
+	        image.scale.set(scaleX, scaleY);
+
+	        return image;
+
+	    },
+
+	    /**
+	     * Copies a rectangular area from the source object to this BitmapData. If you give `null` as the source it will copy from itself.
+	     * You can optionally resize, translate, rotate, scale, alpha or blend as it's drawn.
+	     * All rotation, scaling and drawing takes place around the regions center point by default, but can be changed with the anchor parameters.
+	     * Note that the source image can also be this BitmapData, which can create some interesting effects.
+	     * 
+	     * This method has a lot of parameters for maximum control.
+	     * You can use the more friendly methods like `copyRect` and `draw` to avoid having to remember them all.
+	     *
+	     * @method Phaser.BitmapData#copy
+	     * @param {Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapData|Image|HTMLCanvasElement|string} [source] - The source to copy from. If you give a string it will try and find the Image in the Game.Cache first. This is quite expensive so try to provide the image itself.
+	     * @param {number} [x=0] - The x coordinate representing the top-left of the region to copy from the source image.
+	     * @param {number} [y=0] - The y coordinate representing the top-left of the region to copy from the source image.
+	     * @param {number} [width] - The width of the region to copy from the source image. If not specified it will use the full source image width.
+	     * @param {number} [height] - The height of the region to copy from the source image. If not specified it will use the full source image height.
+	     * @param {number} [tx] - The x coordinate to translate to before drawing. If not specified it will default to the `x` parameter. If `null` and `source` is a Display Object, it will default to `source.x`.
+	     * @param {number} [ty] - The y coordinate to translate to before drawing. If not specified it will default to the `y` parameter. If `null` and `source` is a Display Object, it will default to `source.y`.
+	     * @param {number} [newWidth] - The new width of the block being copied. If not specified it will default to the `width` parameter.
+	     * @param {number} [newHeight] - The new height of the block being copied. If not specified it will default to the `height` parameter.
+	     * @param {number} [rotate=0] - The angle in radians to rotate the block to before drawing. Rotation takes place around the center by default, but can be changed with the `anchor` parameters.
+	     * @param {number} [anchorX=0] - The anchor point around which the block is rotated and scaled. A value between 0 and 1, where 0 is the top-left and 1 is bottom-right.
+	     * @param {number} [anchorY=0] - The anchor point around which the block is rotated and scaled. A value between 0 and 1, where 0 is the top-left and 1 is bottom-right.
+	     * @param {number} [scaleX=1] - The horizontal scale factor of the block. A value of 1 means no scaling. 2 would be twice the size, and so on.
+	     * @param {number} [scaleY=1] - The vertical scale factor of the block. A value of 1 means no scaling. 2 would be twice the size, and so on.
+	     * @param {number} [alpha=1] - The alpha that will be set on the context before drawing. A value between 0 (fully transparent) and 1, opaque.
+	     * @param {string} [blendMode=null] - The composite blend mode that will be used when drawing. The default is no blend mode at all. This is a Canvas globalCompositeOperation value such as 'lighter' or 'xor'.
+	     * @param {boolean} [roundPx=false] - Should the x and y values be rounded to integers before drawing? This prevents anti-aliasing in some instances.
+	     * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	     */
+	    copy: function (source, x, y, width, height, tx, ty, newWidth, newHeight, rotate, anchorX, anchorY, scaleX, scaleY, alpha, blendMode, roundPx) {
+
+	        if (source === undefined || source === null) { source = this; }
+
+	        this._image = source;
+
+	        if (source instanceof Phaser.Sprite || source instanceof Phaser.Image || source instanceof Phaser.Text || source instanceof PIXI.Sprite)
+	        {
+	            //  Copy over sprite values
+	            this._pos.set(source.texture.crop.x, source.texture.crop.y);
+	            this._size.set(source.texture.crop.width, source.texture.crop.height);
+	            this._scale.set(source.scale.x, source.scale.y);
+	            this._anchor.set(source.anchor.x, source.anchor.y);
+	            this._rotate = source.rotation;
+	            this._alpha.current = source.alpha;
+	            this._image = source.texture.baseTexture.source;
+
+	            if (tx === undefined || tx === null) { tx = source.x; }
+	            if (ty === undefined || ty === null) { ty = source.y; }
+
+	            if (source.texture.trim)
+	            {
+	                //  Offset the translation coordinates by the trim amount
+	                tx += source.texture.trim.x - source.anchor.x * source.texture.trim.width;
+	                ty += source.texture.trim.y - source.anchor.y * source.texture.trim.height;
+	            }
+
+	            if (source.tint !== 0xFFFFFF)
+	            {
+	                if (source.cachedTint !== source.tint)
+	                {
+	                    source.cachedTint = source.tint;
+	                    source.tintedTexture = PIXI.CanvasTinter.getTintedTexture(source, source.tint);
+	                }
+
+	                this._image = source.tintedTexture;
+	            }
+	        }
+	        else
+	        {
+	            //  Reset
+	            this._pos.set(0);
+	            this._scale.set(1);
+	            this._anchor.set(0);
+	            this._rotate = 0;
+	            this._alpha.current = 1;
+
+	            if (source instanceof Phaser.BitmapData)
+	            {
+	                this._image = source.canvas;
+	            }
+	            else if (typeof source === 'string')
+	            {
+	                source = this.game.cache.getImage(source);
+
+	                if (source === null)
+	                {
+	                    return;
+	                }
+	                else
+	                {
+	                    this._image = source;
+	                }
+	            }
+
+	            this._size.set(this._image.width, this._image.height);
+	        }
+
+	        //  The source region to copy from
+	        if (x === undefined || x === null) { x = 0; }
+	        if (y === undefined || y === null) { y = 0; }
+
+	        //  If they set a width/height then we override the frame values with them
+	        if (width)
+	        {
+	            this._size.x = width;
+	        }
+
+	        if (height)
+	        {
+	            this._size.y = height;
+	        }
+
+	        //  The destination region to copy to
+	        if (tx === undefined || tx === null) { tx = x; }
+	        if (ty === undefined || ty === null) { ty = y; }
+	        if (newWidth === undefined || newWidth === null) { newWidth = this._size.x; }
+	        if (newHeight === undefined || newHeight === null) { newHeight = this._size.y; }
+
+	        //  Rotation - if set this will override any potential Sprite value
+	        if (typeof rotate === 'number')
+	        {
+	            this._rotate = rotate;
+	        }
+
+	        //  Anchor - if set this will override any potential Sprite value
+	        if (typeof anchorX === 'number')
+	        {
+	            this._anchor.x = anchorX;
+	        }
+
+	        if (typeof anchorY === 'number')
+	        {
+	            this._anchor.y = anchorY;
+	        }
+
+	        //  Scaling - if set this will override any potential Sprite value
+	        if (typeof scaleX === 'number')
+	        {
+	            this._scale.x = scaleX;
+	        }
+
+	        if (typeof scaleY === 'number')
+	        {
+	            this._scale.y = scaleY;
+	        }
+
+	        //  Effects
+	        if (typeof alpha === 'number')
+	        {
+	            this._alpha.current = alpha;
+	        }
+
+	        if (blendMode === undefined) { blendMode = null; }
+	        if (roundPx === undefined) { roundPx = false; }
+
+	        if (this._alpha.current <= 0 || this._scale.x === 0 || this._scale.y === 0 || this._size.x === 0 || this._size.y === 0)
+	        {
+	            //  Why bother wasting CPU cycles drawing something you can't see?
+	            return;
+	        }
+
+	        var ctx = this.context;
+
+	        this._alpha.prev = ctx.globalAlpha;
+
+	        ctx.save();
+
+	        ctx.globalAlpha = this._alpha.current;
+
+	        if (blendMode)
+	        {
+	            this.op = blendMode;
+	        }
+
+	        if (roundPx)
+	        {
+	            tx |= 0;
+	            ty |= 0;
+	        }
+
+	        ctx.translate(tx, ty);
+
+	        ctx.scale(this._scale.x, this._scale.y);
+
+	        ctx.rotate(this._rotate);
+
+	        ctx.drawImage(this._image, this._pos.x + x, this._pos.y + y, this._size.x, this._size.y, -newWidth * this._anchor.x, -newHeight * this._anchor.y, newWidth, newHeight);
+
+	        ctx.restore();
+
+	        ctx.globalAlpha = this._alpha.prev;
+
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Copies the area defined by the Rectangle parameter from the source image to this BitmapData at the given location.
+	    *
+	    * @method Phaser.BitmapData#copyRect
+	    * @param {Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapData|Image|string} source - The Image to copy from. If you give a string it will try and find the Image in the Game.Cache.
+	    * @param {Phaser.Rectangle} area - The Rectangle region to copy from the source image.
+	    * @param {number} x - The destination x coordinate to copy the image to.
+	    * @param {number} y - The destination y coordinate to copy the image to.
+	    * @param {number} [alpha=1] - The alpha that will be set on the context before drawing. A value between 0 (fully transparent) and 1, opaque.
+	    * @param {string} [blendMode=null] - The composite blend mode that will be used when drawing. The default is no blend mode at all. This is a Canvas globalCompositeOperation value such as 'lighter' or 'xor'.
+	    * @param {boolean} [roundPx=false] - Should the x and y values be rounded to integers before drawing? This prevents anti-aliasing in some instances.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    copyRect: function (source, area, x, y, alpha, blendMode, roundPx) {
+
+	        return this.copy(source, area.x, area.y, area.width, area.height, x, y, area.width, area.height, 0, 0, 0, 1, 1, alpha, blendMode, roundPx);
+
+	    },
+
+	    /**
+	    * Draws the given Phaser.Sprite, Phaser.Image or Phaser.Text to this BitmapData at the coordinates specified.
+	    * You can use the optional width and height values to 'stretch' the sprite as it is drawn. This uses drawImage stretching, not scaling.
+	    * When drawing it will take into account the Sprites rotation, scale and alpha values.
+	    *
+	    * @method Phaser.BitmapData#draw
+	    * @param {Phaser.Sprite|Phaser.Image|Phaser.Text} source - The Sprite, Image or Text object to draw onto this BitmapData.
+	    * @param {number} [x=0] - The x coordinate to translate to before drawing. If not specified it will default to `source.x`.
+	    * @param {number} [y=0] - The y coordinate to translate to before drawing. If not specified it will default to `source.y`.
+	    * @param {number} [width] - The new width of the Sprite being copied. If not specified it will default to `source.width`.
+	    * @param {number} [height] - The new height of the Sprite being copied. If not specified it will default to `source.height`.
+	    * @param {string} [blendMode=null] - The composite blend mode that will be used when drawing. The default is no blend mode at all. This is a Canvas globalCompositeOperation value such as 'lighter' or 'xor'.
+	    * @param {boolean} [roundPx=false] - Should the x and y values be rounded to integers before drawing? This prevents anti-aliasing in some instances.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    draw: function (source, x, y, width, height, blendMode, roundPx) {
+
+	        //  By specifying null for most parameters it will tell `copy` to use the Sprite values instead, which is what we want here
+	        return this.copy(source, null, null, null, null, x, y, width, height, null, null, null, null, null, null, blendMode, roundPx);
+
+	    },
+
+	    /**
+	    * Draws the immediate children of a Phaser.Group to this BitmapData.
+	    * Children are only drawn if they have their `exists` property set to `true`.
+	    * The children will be drawn at their `x` and `y` world space coordinates. If this is outside the bounds of the BitmapData they won't be drawn.
+	    * When drawing it will take into account the child's rotation, scale and alpha values.
+	    * No iteration takes place. Groups nested inside other Groups will not be iterated through.
+	    *
+	    * @method Phaser.BitmapData#drawGroup
+	    * @param {Phaser.Group} group - The Group to draw onto this BitmapData.
+	    * @param {string} [blendMode=null] - The composite blend mode that will be used when drawing. The default is no blend mode at all. This is a Canvas globalCompositeOperation value such as 'lighter' or 'xor'.
+	    * @param {boolean} [roundPx=false] - Should the x and y values be rounded to integers before drawing? This prevents anti-aliasing in some instances.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    drawGroup: function (group, blendMode, roundPx) {
+
+	        if (group.total > 0)
+	        {
+	            group.forEachExists(this.copy, this, null, null, null, null, null, null, null, null, null, null, null, null, null, null, blendMode, roundPx);
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Draws the Game Object or Group to this BitmapData and then recursively iterates through all of its children.
+	    * 
+	    * If a child has an `exists` property then it (and its children) will be only be drawn if exists is `true`.
+	    * 
+	    * The children will be drawn at their `x` and `y` world space coordinates. If this is outside the bounds of the BitmapData 
+	    * they won't be drawn. Depending on your requirements you may need to resize the BitmapData in advance to match the 
+	    * bounds of the top-level Game Object.
+	    * 
+	    * When drawing it will take into account the child's world rotation, scale and alpha values.
+	    *
+	    * It's perfectly valid to pass in `game.world` as the parent object, and it will iterate through the entire display list.
+	    * 
+	    * Note: If you are trying to grab your entire game at the start of a State then you should ensure that at least 1 full update
+	    * has taken place before doing so, otherwise all of the objects will render with incorrect positions and scales. You can 
+	    * trigger an update yourself by calling `stage.updateTransform()` before calling `drawFull`.
+	    *
+	    * @method Phaser.BitmapData#drawFull
+	    * @param {Phaser.World|Phaser.Group|Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapText} parent - The Game Object to draw onto this BitmapData and then recursively draw all of its children.
+	    * @param {string} [blendMode=null] - The composite blend mode that will be used when drawing. The default is no blend mode at all. This is a Canvas globalCompositeOperation value such as 'lighter' or 'xor'.
+	    * @param {boolean} [roundPx=false] - Should the x and y values be rounded to integers before drawing? This prevents anti-aliasing in some instances.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    drawFull: function (parent, blendMode, roundPx) {
+
+	        if (parent.worldVisible === false || parent.worldAlpha === 0 || (parent.hasOwnProperty('exists') && parent.exists === false))
+	        {
+	            return this;
+	        }
+
+	        if (parent.type !== Phaser.GROUP && parent.type !== Phaser.EMITTER && parent.type !== Phaser.BITMAPTEXT)
+	        {
+	            if (parent.type === Phaser.GRAPHICS)
+	            {
+	                var bounds = parent.getBounds();
+	                this.ctx.save();
+	                this.ctx.translate(bounds.x, bounds.y);
+	                PIXI.CanvasGraphics.renderGraphics(parent, this.ctx);
+	                this.ctx.restore();
+	            }
+	            else
+	            {
+	                this.copy(parent, null, null, null, null, parent.worldPosition.x, parent.worldPosition.y, null, null, parent.worldRotation, null, null, parent.worldScale.x, parent.worldScale.y, parent.worldAlpha, blendMode, roundPx);
+	            }
+	        }
+
+	        if (parent.children)
+	        {
+	            for (var i = 0; i < parent.children.length; i++)
+	            {
+	                this.drawFull(parent.children[i], blendMode, roundPx);
+	            }
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the shadow properties of this BitmapDatas context which will affect all draw operations made to it.
+	    * You can cancel an existing shadow by calling this method and passing no parameters.
+	    * Note: At the time of writing (October 2014) Chrome still doesn't support shadowBlur used with drawImage.
+	    *
+	    * @method Phaser.BitmapData#shadow
+	    * @param {string} color - The color of the shadow, given in a CSS format, i.e. `#000000` or `rgba(0,0,0,1)`. If `null` or `undefined` the shadow will be reset.
+	    * @param {number} [blur=5] - The amount the shadow will be blurred by. Low values = a crisp shadow, high values = a softer shadow.
+	    * @param {number} [x=10] - The horizontal offset of the shadow in pixels.
+	    * @param {number} [y=10] - The vertical offset of the shadow in pixels.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    shadow: function (color, blur, x, y) {
+
+	        var ctx = this.context;
+
+	        if (color === undefined || color === null)
+	        {
+	            ctx.shadowColor = 'rgba(0,0,0,0)';
+	        }
+	        else
+	        {
+	            ctx.shadowColor = color;
+	            ctx.shadowBlur = blur || 5;
+	            ctx.shadowOffsetX = x || 10;
+	            ctx.shadowOffsetY = y || 10;
+	        }
+
+	    },
+
+	    /**
+	    * Draws the image onto this BitmapData using an image as an alpha mask.
+	    *
+	    * @method Phaser.BitmapData#alphaMask
+	    * @param {Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapData|Image|HTMLCanvasElement|string} source - The source to copy from. If you give a string it will try and find the Image in the Game.Cache first. This is quite expensive so try to provide the image itself.
+	    * @param {Phaser.Sprite|Phaser.Image|Phaser.Text|Phaser.BitmapData|Image|HTMLCanvasElement|string} [mask] - The object to be used as the mask. If you give a string it will try and find the Image in the Game.Cache first. This is quite expensive so try to provide the image itself. If you don't provide a mask it will use this BitmapData as the mask.
+	    * @param {Phaser.Rectangle} [sourceRect] - A Rectangle where x/y define the coordinates to draw the Source image to and width/height define the size.
+	    * @param {Phaser.Rectangle} [maskRect] - A Rectangle where x/y define the coordinates to draw the Mask image to and width/height define the size.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    alphaMask: function (source, mask, sourceRect, maskRect) {
+
+	        if (maskRect === undefined || maskRect === null)
+	        {
+	            this.draw(mask).blendSourceAtop();
+	        }
+	        else
+	        {
+	            this.draw(mask, maskRect.x, maskRect.y, maskRect.width, maskRect.height).blendSourceAtop();
+	        }
+
+	        if (sourceRect === undefined || sourceRect === null)
+	        {
+	            this.draw(source).blendReset();
+	        }
+	        else
+	        {
+	            this.draw(source, sourceRect.x, sourceRect.y, sourceRect.width, sourceRect.height).blendReset();
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Scans this BitmapData for all pixels matching the given r,g,b values and then draws them into the given destination BitmapData.
+	    * The original BitmapData remains unchanged.
+	    * The destination BitmapData must be large enough to receive all of the pixels that are scanned unless the 'resize' parameter is true.
+	    * Although the destination BitmapData is returned from this method, it's actually modified directly in place, meaning this call is perfectly valid:
+	    * `picture.extract(mask, r, g, b)`
+	    * You can specify optional r2, g2, b2 color values. If given the pixel written to the destination bitmap will be of the r2, g2, b2 color.
+	    * If not given it will be written as the same color it was extracted. You can provide one or more alternative colors, allowing you to tint
+	    * the color during extraction.
+	    *
+	    * @method Phaser.BitmapData#extract
+	    * @param {Phaser.BitmapData} destination - The BitmapData that the extracted pixels will be drawn to.
+	    * @param {number} r - The red color component, in the range 0 - 255.
+	    * @param {number} g - The green color component, in the range 0 - 255.
+	    * @param {number} b - The blue color component, in the range 0 - 255.
+	    * @param {number} [a=255] - The alpha color component, in the range 0 - 255 that the new pixel will be drawn at.
+	    * @param {boolean} [resize=false] - Should the destination BitmapData be resized to match this one before the pixels are copied?
+	    * @param {number} [r2] - An alternative red color component to be written to the destination, in the range 0 - 255.
+	    * @param {number} [g2] - An alternative green color component to be written to the destination, in the range 0 - 255.
+	    * @param {number} [b2] - An alternative blue color component to be written to the destination, in the range 0 - 255.
+	    * @returns {Phaser.BitmapData} The BitmapData that the extract pixels were drawn on.
+	    */
+	    extract: function (destination, r, g, b, a, resize, r2, g2, b2) {
+
+	        if (a === undefined) { a = 255; }
+	        if (resize === undefined) { resize = false; }
+	        if (r2 === undefined) { r2 = r; }
+	        if (g2 === undefined) { g2 = g; }
+	        if (b2 === undefined) { b2 = b; }
+
+	        if (resize)
+	        {
+	            destination.resize(this.width, this.height);
+	        }
+
+	        this.processPixelRGB(
+	            function (pixel, x, y)
+	            {
+	                if (pixel.r === r && pixel.g === g && pixel.b === b)
+	                {
+	                    destination.setPixel32(x, y, r2, g2, b2, a, false);
+	                }
+	                return false;
+	            },
+	            this);
+
+	        destination.context.putImageData(destination.imageData, 0, 0);
+	        destination.dirty = true;
+
+	        return destination;
+
+	    },
+
+	    /**
+	    * Draws a filled Rectangle to the BitmapData at the given x, y coordinates and width / height in size.
+	    *
+	    * @method Phaser.BitmapData#rect
+	    * @param {number} x - The x coordinate of the top-left of the Rectangle.
+	    * @param {number} y - The y coordinate of the top-left of the Rectangle.
+	    * @param {number} width - The width of the Rectangle.
+	    * @param {number} height - The height of the Rectangle.
+	    * @param {string} [fillStyle] - If set the context fillStyle will be set to this value before the rect is drawn.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    rect: function (x, y, width, height, fillStyle) {
+
+	        if (typeof fillStyle !== 'undefined')
+	        {
+	            this.context.fillStyle = fillStyle;
+	        }
+
+	        this.context.fillRect(x, y, width, height);
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Draws text to the BitmapData in the given font and color.
+	    * The default font is 14px Courier, so useful for quickly drawing debug text.
+	    * If you need to do a lot of font work to this BitmapData we'd recommend implementing your own text draw method.
+	    *
+	    * @method Phaser.BitmapData#text
+	    * @param {string} text - The text to write to the BitmapData.
+	    * @param {number} x - The x coordinate of the top-left of the text string.
+	    * @param {number} y - The y coordinate of the top-left of the text string.
+	    * @param {string} [font='14px Courier'] - The font. This is passed directly to Context.font, so anything that can support, this can.
+	    * @param {string} [color='rgb(255,255,255)'] - The color the text will be drawn in.
+	    * @param {boolean} [shadow=true] - Draw a single pixel black shadow below the text (offset by text.x/y + 1)
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    text: function (text, x, y, font, color, shadow) {
+
+	        if (x === undefined) { x = 0; }
+	        if (y === undefined) { y = 0; }
+	        if (font === undefined) { font = '14px Courier'; }
+	        if (color === undefined) { color = 'rgb(255,255,255)'; }
+	        if (shadow === undefined) { shadow = true; }
+
+	        var ctx = this.context;
+	        var prevFont = ctx.font;
+
+	        ctx.font = font;
+
+	        if (shadow)
+	        {
+	            ctx.fillStyle = 'rgb(0,0,0)';
+	            ctx.fillText(text, x + 1, y + 1);
+	        }
+	        
+	        ctx.fillStyle = color;
+	        ctx.fillText(text, x, y);
+
+	        ctx.font = prevFont;
+
+	    },
+
+	    /**
+	    * Draws a filled Circle to the BitmapData at the given x, y coordinates and radius in size.
+	    *
+	    * @method Phaser.BitmapData#circle
+	    * @param {number} x - The x coordinate to draw the Circle at. This is the center of the circle.
+	    * @param {number} y - The y coordinate to draw the Circle at. This is the center of the circle.
+	    * @param {number} radius - The radius of the Circle in pixels. The radius is half the diameter.
+	    * @param {string} [fillStyle] - If set the context fillStyle will be set to this value before the circle is drawn.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    circle: function (x, y, radius, fillStyle) {
+
+	        var ctx = this.context;
+
+	        if (fillStyle !== undefined)
+	        {
+	            ctx.fillStyle = fillStyle;
+	        }
+
+	        ctx.beginPath();
+	        ctx.arc(x, y, radius, 0, Math.PI * 2, false);
+	        ctx.closePath();
+
+	        ctx.fill();
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Draws a line between the coordinates given in the color and thickness specified.
+	    *
+	    * @method Phaser.BitmapData#line
+	    * @param {number} x1 - The x coordinate to start the line from.
+	    * @param {number} y1 - The y coordinate to start the line from.
+	    * @param {number} x2 - The x coordinate to draw the line to.
+	    * @param {number} y2 - The y coordinate to draw the line to.
+	    * @param {string} [color='#fff'] - The stroke color that the line will be drawn in.
+	    * @param {number} [width=1] - The line thickness.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    line: function (x1, y1, x2, y2, color, width) {
+
+	        if (color === undefined) { color = '#fff'; }
+	        if (width === undefined) { width = 1; }
+
+	        var ctx = this.context;
+
+	        ctx.beginPath();
+
+	        ctx.moveTo(x1, y1);
+	        ctx.lineTo(x2, y2);
+
+	        ctx.lineWidth = width;
+	        ctx.strokeStyle = color;
+	        ctx.stroke();
+
+	        ctx.closePath();
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Takes the given Line object and image and renders it to this BitmapData as a repeating texture line.
+	    *
+	    * @method Phaser.BitmapData#textureLine
+	    * @param {Phaser.Line} line - A Phaser.Line object that will be used to plot the start and end of the line.
+	    * @param {string|Image} image - The key of an image in the Phaser.Cache to use as the texture for this line, or an actual Image.
+	    * @param {string} [repeat='repeat-x'] - The pattern repeat mode to use when drawing the line. Either `repeat`, `repeat-x` or `no-repeat`.
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    textureLine: function (line, image, repeat) {
+
+	        if (repeat === undefined) { repeat = 'repeat-x'; }
+
+	        if (typeof image === 'string')
+	        {
+	            image = this.game.cache.getImage(image);
+
+	            if (!image)
+	            {
+	                return;
+	            }
+	        }
+
+	        var width = line.length;
+
+	        if (repeat === 'no-repeat' && width > image.width)
+	        {
+	            width = image.width;
+	        }
+
+	        var ctx = this.context;
+
+	        ctx.fillStyle = ctx.createPattern(image, repeat);
+
+	        this._circle = new Phaser.Circle(line.start.x, line.start.y, image.height);
+
+	        this._circle.circumferencePoint(line.angle - 1.5707963267948966, false, this._pos);
+
+	        ctx.save();
+	        ctx.translate(this._pos.x, this._pos.y);
+	        ctx.rotate(line.angle);
+	        ctx.fillRect(0, 0, width, image.height);
+	        ctx.restore();
+
+	        this.dirty = true;
+
+	        return this;
+
+	    },
+
+	    /**
+	    * If the game is running in WebGL this will push the texture up to the GPU if it's dirty.
+	    * This is called automatically if the BitmapData is being used by a Sprite, otherwise you need to remember to call it in your render function.
+	    * If you wish to suppress this functionality set BitmapData.disableTextureUpload to `true`.
+	    *
+	    * @method Phaser.BitmapData#render
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    render: function () {
+
+	        if (!this.disableTextureUpload && this.dirty)
+	        {
+	            this.baseTexture.dirty();
+	            this.dirty = false;
+	        }
+
+	        return this;
+
+	    },
+
+	    /**
+	    * Destroys this BitmapData and puts the canvas it was using back into the canvas pool for re-use.
+	    *
+	    * @method Phaser.BitmapData#destroy
+	    */
+	    destroy: function () {
+
+	        PIXI.CanvasPool.remove(this);
+
+	    },
+
+	    /**
+	    * Resets the blend mode (effectively sets it to 'source-over')
+	    *
+	    * @method Phaser.BitmapData#blendReset
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendReset: function () {
+
+	        this.op = 'source-over';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'source-over'
+	    *
+	    * @method Phaser.BitmapData#blendSourceOver
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSourceOver: function () {
+
+	        this.op = 'source-over';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'source-in'
+	    *
+	    * @method Phaser.BitmapData#blendSourceIn
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSourceIn: function () {
+
+	        this.op = 'source-in';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'source-out'
+	    *
+	    * @method Phaser.BitmapData#blendSourceOut
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSourceOut: function () {
+
+	        this.op = 'source-out';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'source-atop'
+	    *
+	    * @method Phaser.BitmapData#blendSourceAtop
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSourceAtop: function () {
+
+	        this.op = 'source-atop';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'destination-over'
+	    *
+	    * @method Phaser.BitmapData#blendDestinationOver
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDestinationOver: function () {
+
+	        this.op = 'destination-over';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'destination-in'
+	    *
+	    * @method Phaser.BitmapData#blendDestinationIn
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDestinationIn: function () {
+
+	        this.op = 'destination-in';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'destination-out'
+	    *
+	    * @method Phaser.BitmapData#blendDestinationOut
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDestinationOut: function () {
+
+	        this.op = 'destination-out';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'destination-atop'
+	    *
+	    * @method Phaser.BitmapData#blendDestinationAtop
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDestinationAtop: function () {
+
+	        this.op = 'destination-atop';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'xor'
+	    *
+	    * @method Phaser.BitmapData#blendXor
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendXor: function () {
+
+	        this.op = 'xor';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'lighter'
+	    *
+	    * @method Phaser.BitmapData#blendAdd
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendAdd: function () {
+
+	        this.op = 'lighter';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'multiply'
+	    *
+	    * @method Phaser.BitmapData#blendMultiply
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendMultiply: function () {
+
+	        this.op = 'multiply';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'screen'
+	    *
+	    * @method Phaser.BitmapData#blendScreen
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendScreen: function () {
+
+	        this.op = 'screen';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'overlay'
+	    *
+	    * @method Phaser.BitmapData#blendOverlay
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendOverlay: function () {
+
+	        this.op = 'overlay';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'darken'
+	    *
+	    * @method Phaser.BitmapData#blendDarken
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDarken: function () {
+
+	        this.op = 'darken';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'lighten'
+	    *
+	    * @method Phaser.BitmapData#blendLighten
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendLighten: function () {
+
+	        this.op = 'lighten';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'color-dodge'
+	    *
+	    * @method Phaser.BitmapData#blendColorDodge
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendColorDodge: function () {
+
+	        this.op = 'color-dodge';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'color-burn'
+	    *
+	    * @method Phaser.BitmapData#blendColorBurn
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendColorBurn: function () {
+
+	        this.op = 'color-burn';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'hard-light'
+	    *
+	    * @method Phaser.BitmapData#blendHardLight
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendHardLight: function () {
+
+	        this.op = 'hard-light';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'soft-light'
+	    *
+	    * @method Phaser.BitmapData#blendSoftLight
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSoftLight: function () {
+
+	        this.op = 'soft-light';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'difference'
+	    *
+	    * @method Phaser.BitmapData#blendDifference
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendDifference: function () {
+
+	        this.op = 'difference';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'exclusion'
+	    *
+	    * @method Phaser.BitmapData#blendExclusion
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendExclusion: function () {
+
+	        this.op = 'exclusion';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'hue'
+	    *
+	    * @method Phaser.BitmapData#blendHue
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendHue: function () {
+
+	        this.op = 'hue';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'saturation'
+	    *
+	    * @method Phaser.BitmapData#blendSaturation
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendSaturation: function () {
+
+	        this.op = 'saturation';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'color'
+	    *
+	    * @method Phaser.BitmapData#blendColor
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendColor: function () {
+
+	        this.op = 'color';
+	        return this;
+
+	    },
+
+	    /**
+	    * Sets the blend mode to 'luminosity'
+	    *
+	    * @method Phaser.BitmapData#blendLuminosity
+	    * @return {Phaser.BitmapData} This BitmapData object for method chaining.
+	    */
+	    blendLuminosity: function () {
+
+	        this.op = 'luminosity';
+	        return this;
+
+	    }
+
+	};
+
+	/**
+	* @memberof Phaser.BitmapData
+	* @property {boolean} smoothed - Gets or sets this BitmapData.contexts smoothing enabled value.
+	*/
+	Object.defineProperty(BitmapData.prototype, "smoothed", {
+
+	    get: function () {
+
+	        Phaser.Canvas.getSmoothingEnabled(this.context);
+
+	    },
+
+	    set: function (value) {
+
+	        Phaser.Canvas.setSmoothingEnabled(this.context, value);
+
+	    }
+
+	});
+
+	/**
+	* @memberof Phaser.BitmapData
+	* @property {string} op - A short-hand code to get or set the global composite operation of the BitmapDatas canvas.
+	*/
+	Object.defineProperty(BitmapData.prototype, "op", {
+
+	    get: function () {
+
+	        return this.context.globalCompositeOperation;
+
+	    },
+
+	    set: function (value) {
+
+	        this.context.globalCompositeOperation = value;
+
+	    }
+
+	});
+
+	/**
+	 * Gets a JavaScript object that has 6 properties set that are used by BitmapData in a transform.
+	 *
+	 * @method Phaser.BitmapData.getTransform
+	 * @param {number} translateX - The x translate value.
+	 * @param {number} translateY - The y translate value.
+	 * @param {number} scaleX - The scale x value.
+	 * @param {number} scaleY - The scale y value.
+	 * @param {number} skewX - The skew x value.
+	 * @param {number} skewY - The skew y value.
+	 * @return {object} A JavaScript object containing all of the properties BitmapData needs for transforms.
+	 */
+	BitmapData.getTransform = function (translateX, translateY, scaleX, scaleY, skewX, skewY) {
+
+	    if (typeof translateX !== 'number') { translateX = 0; }
+	    if (typeof translateY !== 'number') { translateY = 0; }
+	    if (typeof scaleX !== 'number') { scaleX = 1; }
+	    if (typeof scaleY !== 'number') { scaleY = 1; }
+	    if (typeof skewX !== 'number') { skewX = 0; }
+	    if (typeof skewY !== 'number') { skewY = 0; }
+
+	    return { sx: scaleX, sy: scaleY, scaleX: scaleX, scaleY: scaleY, skewX: skewX, skewY: skewY, translateX: translateX, translateY: translateY, tx: translateX, ty: translateY };
+
+	};
+
+	BitmapData.prototype.constructor = BitmapData;
+
+	module.exports = BitmapData;
+
+
+/***/ },
+/* 27 */
+/***/ function(module, exports) {
+
+	!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var n;"undefined"!=typeof window?n=window:"undefined"!=typeof global?n=global:"undefined"!=typeof self&&(n=self);var f=n;f=f.Phaser||(f.Phaser={}),f=f.Plugin||(f.Plugin={}),f.Debug=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+	var ui = require('./util/ui'),
+	    css = require('./styles/main.less'),
+	    PerformancePanel = require('./panels/Performance'),
+	    ScenePanel = require('./panels/Scene');
+
+	/**
+	 * @class Phaser.Plugin.Debug
+	 * @classdesc Phaser - Debug Plugin
+	 *
+	 * @constructor
+	 * @extends Phaser.Plugin
+	 *
+	 * @param {Phaser.Game} game - A reference to the currently running game.
+	 * @param {Any} parent - The object that owns this plugin, usually Phaser.PluginManager.
+	 */
+	function Debug(game, parent) {
+	    Phaser.Plugin.call(this, game, parent);
+
+	    this.panels = {
+	        performance: null,
+	        scene: null
+	    };
+
+	    this.tickTimings = {
+	        lastStart: 0,
+	        start: 0,
+	        ms: 0
+	    };
+
+	    this.timings = {
+	        preUpdate: {
+	            physics  : 0,
+	            state    : 0,
+	            plugins  : 0,
+	            stage    : 0
+	        },
+	        update: {
+	            state    : 0,
+	            stage    : 0,
+	            tweens   : 0,
+	            sound    : 0,
+	            input    : 0,
+	            physics  : 0,
+	            particles: 0,
+	            plugins  : 0
+	        },
+	        postUpdate: {
+	            stage    : 0,
+	            plugins  : 0
+	        },
+	        preRender: {
+	            state    : 0
+	        },
+	        render: {
+	            renderer : 0,
+	            plugins  : 0,
+	            state    : 0
+	        },
+	        postRender: {
+	            plugins  : 0
+	        }
+	    };
+
+	    this._container = null;
+	    this._bar = null;
+
+	    this._stats = {
+	        ms: null,
+	        fps: null,
+	        dpf: null,
+	        ent: null
+	    };
+
+	    this.timer = (window.performance ? window.performance : Date);
+	}
+
+	//  Extends the Phaser.Plugin template, setting up values we need
+	Debug.prototype = Object.create(Phaser.Plugin.prototype);
+	Debug.prototype.constructor = Debug;
+
+	Debug.PKG = require('../package.json');
+	Debug.VERSION = Debug.PKG.version;
+
+	module.exports = Debug;
+
+	Debug.prototype.init = function () {
+	    // create the panels
+	    this.panels.performance = new PerformancePanel(this.game, this);
+	    this.panels.scene = new ScenePanel(this.game, this);
+
+	    // add elements to the page
+	    ui.addCss(css);
+	    document.body.appendChild(this._createElement());
+
+	    this._bindEvents();
+
+	    // wrap each component's update methods so we can time them
+	    for (var method in this.timings) {
+	        for (var comp in this.timings[method]) {
+	            this._wrap(this.game, comp, method, comp);
+	        }
+	    }
+
+	    // wrap the game update method
+	    this._wrap(this, 'game', 'update');
+
+	    // initialize each panel
+	    for (var p in this.panels) {
+	        if (this.panels[p].init) {
+	            this.panels[p].init.apply(this.panels[p], arguments);
+	        }
+	    }
+	};
+
+	/**
+	 * Post-Update is called after all the update methods have already been called, but before the render calls.
+	 * It is only called if active is set to true.
+	 *
+	 * @method Phaser.Plugin.Debug#postUpdate
+	 */
+	Debug.prototype.postUpdate = function () {
+	    for (var p in this.panels) {
+	        if (this.panels[p].update && this.panels[p].active) {
+	            this.panels[p].update();
+	        }
+	    }
+
+	    var fps = Math.round(1000 / (this.tickTimings.start - this.tickTimings.lastStart)),
+	        dpf = this.game.renderer.renderSession.drawCount;
+
+	    fps = fps > 60 ? 60 : fps;
+
+	    // update stats indicators
+	    ui.setText(this._stats.dpf.firstElementChild, dpf === undefined ? '(N/A)' : dpf, 3);
+	    ui.setText(this._stats.ms.firstElementChild, Math.round(this.tickTimings.ms), 4);
+	    ui.setText(this._stats.fps.firstElementChild, Math.round(fps), 2);
+	};
+
+	/**
+	 * Marks a point on the performance graph with a label to help you corrolate events and timing on the graph
+	 *
+	 * @method Phaser.Plugin.Debug#mark
+	 */
+	Debug.prototype.mark = function (label) {
+	    if (this.panels.performance) {
+	        this.panels.performance.mark(label);
+	    }
+	};
+
+	Debug.prototype.destroy = function () {
+	    Phaser.Plugin.prototype.destroy.call(this);
+
+	    for (var p in this.panels) {
+	        this.panels[p].destroy();
+	    }
+
+	    this.panels = null;
+	    this.tickTimings = null;
+	    this.timings = null;
+
+	    this._container = null;
+	    this._bar = null;
+	    this._stats = null;
+
+	    this.timer = null;
+	};
+
+	Debug.prototype._wrap = function (obj, component, method, timingStat) {
+	    if (!obj[component] || !obj[component][method]) {
+	        return;
+	    }
+
+	    obj[component][method] = (function(self, name, method, stat, fn) {
+	        var start = 0,
+	            end = 0;
+
+	        // special tick capture for game update
+	        if (name === 'game' && method === 'update' && !stat) {
+	            return function () {
+	                start = self.timer.now();
+
+	                self.tickTimings.lastStart = self.tickTimings.start;
+	                self.tickTimings.start = start;
+
+	                fn.apply(this, arguments);
+
+	                end = self.timer.now();
+
+	                self.tickTimings.ms = end - start;
+	            };
+	        }
+	        else {
+	            return function () {
+	                start = self.timer.now();
+
+	                fn.apply(this, arguments);
+
+	                end = self.timer.now();
+
+	                self.timings[method][stat] = end - start;
+	            };
+	        }
+	    })(this, component, method, timingStat, obj[component][method]);
+	};
+
+	Debug.prototype._bindEvents = function () {
+	    var activePanel,
+	        self = this;
+
+	    ui.on(this._bar, 'click', '.pdebug-menu-item', function(e) {
+	        e.preventDefault();
+
+	        var panel = self.panels[e.target.getAttribute('href').replace('#', '')];
+
+	        if(!panel) {
+	            return;
+	        }
+
+	        if(activePanel) {
+	            activePanel.toggle();
+	            ui.removeClass(activePanel._menuItem, 'active');
+
+	            if(activePanel.name === panel.name) {
+	                activePanel = null;
+	                return;
+	            }
+	        }
+
+	        ui.addClass(e.target, 'active');
+	        panel.toggle();
+	        activePanel = panel;
+	    });
+	};
+
+	Debug.prototype._createElement = function () {
+	    var c = this._container = document.createElement('div'),
+	        bar = this._bar = document.createElement('div');
+
+	    //container
+	    ui.addClass(c, 'pdebug');
+	    c.appendChild(bar);
+
+	    //the menu bar
+	    ui.addClass(bar, 'pdebug-menu');
+	    bar.appendChild(this._createMenuHead());
+	    bar.appendChild(this._createMenuStats());
+
+	    //add the panels
+	    for(var p in this.panels) {
+	        bar.appendChild(this.panels[p].createMenuElement());
+	        c.appendChild(this.panels[p].createPanelElement());
+	    }
+
+	    return c;
+	};
+
+	Debug.prototype._createMenuHead = function () {
+	    var div = document.createElement('span'),
+	        r = this.game.renderType,
+	        type = (r === Phaser.WEBGL ? 'WebGL' : (r === Phaser.HEADLESS ? 'Headless' : 'Canvas'));
+
+	    ui.addClass(div, 'pdebug-head');
+	    ui.setText(div, 'Phaser Debug (' + type + '):');
+
+	    return div;
+	};
+
+	Debug.prototype._createMenuStats = function () {
+	    var div = document.createElement('div');
+
+	    ui.addClass(div, 'pdebug-stats');
+
+	    this._stats.ms = document.createElement('span');
+	    this._stats.fps = document.createElement('span');
+	    this._stats.dpf = document.createElement('span');
+	    // this._stats.ent = document.createElement('span');
+
+	    ui.addClass(this._stats.ms, 'pdebug-stats-item ms');
+	    ui.setHtml(this._stats.ms, '<span>0</span> ms');
+	    div.appendChild(this._stats.ms);
+
+	    ui.addClass(this._stats.fps, 'pdebug-stats-item fps');
+	    ui.setHtml(this._stats.fps, '<span>0</span> fps');
+	    div.appendChild(this._stats.fps);
+
+	    ui.addClass(this._stats.dpf, 'pdebug-stats-item dpf');
+	    ui.setHtml(this._stats.dpf, '<span>0</span> draws');
+	    div.appendChild(this._stats.dpf);
+
+	    // ui.addClass(this._stats.ent, 'pdebug-stats-item ent');
+	    // ui.setHtml(this._stats.ent, '<span>0</span> entities');
+	    // div.appendChild(this._stats.ent);
+
+	    return div;
+	};
+
+	},{"../package.json":10,"./panels/Performance":15,"./panels/Scene":16,"./styles/main.less":17,"./util/ui":19}],2:[function(require,module,exports){
+	"use strict";
+	/*globals Handlebars: true */
+	var base = require("./handlebars/base");
+
+	// Each of these augment the Handlebars object. No need to setup here.
+	// (This is done to easily share code between commonjs and browse envs)
+	var SafeString = require("./handlebars/safe-string")["default"];
+	var Exception = require("./handlebars/exception")["default"];
+	var Utils = require("./handlebars/utils");
+	var runtime = require("./handlebars/runtime");
+
+	// For compatibility and usage outside of module systems, make the Handlebars object a namespace
+	var create = function() {
+	  var hb = new base.HandlebarsEnvironment();
+
+	  Utils.extend(hb, base);
+	  hb.SafeString = SafeString;
+	  hb.Exception = Exception;
+	  hb.Utils = Utils;
+	  hb.escapeExpression = Utils.escapeExpression;
+
+	  hb.VM = runtime;
+	  hb.template = function(spec) {
+	    return runtime.template(spec, hb);
+	  };
+
+	  return hb;
+	};
+
+	var Handlebars = create();
+	Handlebars.create = create;
+
+	Handlebars['default'] = Handlebars;
+
+	exports["default"] = Handlebars;
+	},{"./handlebars/base":3,"./handlebars/exception":4,"./handlebars/runtime":5,"./handlebars/safe-string":6,"./handlebars/utils":7}],3:[function(require,module,exports){
+	"use strict";
+	var Utils = require("./utils");
+	var Exception = require("./exception")["default"];
+
+	var VERSION = "2.0.0";
+	exports.VERSION = VERSION;var COMPILER_REVISION = 6;
+	exports.COMPILER_REVISION = COMPILER_REVISION;
+	var REVISION_CHANGES = {
+	  1: '<= 1.0.rc.2', // 1.0.rc.2 is actually rev2 but doesn't report it
+	  2: '== 1.0.0-rc.3',
+	  3: '== 1.0.0-rc.4',
+	  4: '== 1.x.x',
+	  5: '== 2.0.0-alpha.x',
+	  6: '>= 2.0.0-beta.1'
+	};
+	exports.REVISION_CHANGES = REVISION_CHANGES;
+	var isArray = Utils.isArray,
+	    isFunction = Utils.isFunction,
+	    toString = Utils.toString,
+	    objectType = '[object Object]';
+
+	function HandlebarsEnvironment(helpers, partials) {
+	  this.helpers = helpers || {};
+	  this.partials = partials || {};
+
+	  registerDefaultHelpers(this);
+	}
+
+	exports.HandlebarsEnvironment = HandlebarsEnvironment;HandlebarsEnvironment.prototype = {
+	  constructor: HandlebarsEnvironment,
+
+	  logger: logger,
+	  log: log,
+
+	  registerHelper: function(name, fn) {
+	    if (toString.call(name) === objectType) {
+	      if (fn) { throw new Exception('Arg not supported with multiple helpers'); }
+	      Utils.extend(this.helpers, name);
+	    } else {
+	      this.helpers[name] = fn;
+	    }
+	  },
+	  unregisterHelper: function(name) {
+	    delete this.helpers[name];
+	  },
+
+	  registerPartial: function(name, partial) {
+	    if (toString.call(name) === objectType) {
+	      Utils.extend(this.partials,  name);
+	    } else {
+	      this.partials[name] = partial;
+	    }
+	  },
+	  unregisterPartial: function(name) {
+	    delete this.partials[name];
+	  }
+	};
+
+	function registerDefaultHelpers(instance) {
+	  instance.registerHelper('helperMissing', function(/* [args, ]options */) {
+	    if(arguments.length === 1) {
+	      // A missing field in a {{foo}} constuct.
+	      return undefined;
+	    } else {
+	      // Someone is actually trying to call something, blow up.
+	      throw new Exception("Missing helper: '" + arguments[arguments.length-1].name + "'");
+	    }
+	  });
+
+	  instance.registerHelper('blockHelperMissing', function(context, options) {
+	    var inverse = options.inverse,
+	        fn = options.fn;
+
+	    if(context === true) {
+	      return fn(this);
+	    } else if(context === false || context == null) {
+	      return inverse(this);
+	    } else if (isArray(context)) {
+	      if(context.length > 0) {
+	        if (options.ids) {
+	          options.ids = [options.name];
+	        }
+
+	        return instance.helpers.each(context, options);
+	      } else {
+	        return inverse(this);
+	      }
+	    } else {
+	      if (options.data && options.ids) {
+	        var data = createFrame(options.data);
+	        data.contextPath = Utils.appendContextPath(options.data.contextPath, options.name);
+	        options = {data: data};
+	      }
+
+	      return fn(context, options);
+	    }
+	  });
+
+	  instance.registerHelper('each', function(context, options) {
+	    if (!options) {
+	      throw new Exception('Must pass iterator to #each');
+	    }
+
+	    var fn = options.fn, inverse = options.inverse;
+	    var i = 0, ret = "", data;
+
+	    var contextPath;
+	    if (options.data && options.ids) {
+	      contextPath = Utils.appendContextPath(options.data.contextPath, options.ids[0]) + '.';
+	    }
+
+	    if (isFunction(context)) { context = context.call(this); }
+
+	    if (options.data) {
+	      data = createFrame(options.data);
+	    }
+
+	    if(context && typeof context === 'object') {
+	      if (isArray(context)) {
+	        for(var j = context.length; i<j; i++) {
+	          if (data) {
+	            data.index = i;
+	            data.first = (i === 0);
+	            data.last  = (i === (context.length-1));
+
+	            if (contextPath) {
+	              data.contextPath = contextPath + i;
+	            }
+	          }
+	          ret = ret + fn(context[i], { data: data });
+	        }
+	      } else {
+	        for(var key in context) {
+	          if(context.hasOwnProperty(key)) {
+	            if(data) {
+	              data.key = key;
+	              data.index = i;
+	              data.first = (i === 0);
+
+	              if (contextPath) {
+	                data.contextPath = contextPath + key;
+	              }
+	            }
+	            ret = ret + fn(context[key], {data: data});
+	            i++;
+	          }
+	        }
+	      }
+	    }
+
+	    if(i === 0){
+	      ret = inverse(this);
+	    }
+
+	    return ret;
+	  });
+
+	  instance.registerHelper('if', function(conditional, options) {
+	    if (isFunction(conditional)) { conditional = conditional.call(this); }
+
+	    // Default behavior is to render the positive path if the value is truthy and not empty.
+	    // The `includeZero` option may be set to treat the condtional as purely not empty based on the
+	    // behavior of isEmpty. Effectively this determines if 0 is handled by the positive path or negative.
+	    if ((!options.hash.includeZero && !conditional) || Utils.isEmpty(conditional)) {
+	      return options.inverse(this);
+	    } else {
+	      return options.fn(this);
+	    }
+	  });
+
+	  instance.registerHelper('unless', function(conditional, options) {
+	    return instance.helpers['if'].call(this, conditional, {fn: options.inverse, inverse: options.fn, hash: options.hash});
+	  });
+
+	  instance.registerHelper('with', function(context, options) {
+	    if (isFunction(context)) { context = context.call(this); }
+
+	    var fn = options.fn;
+
+	    if (!Utils.isEmpty(context)) {
+	      if (options.data && options.ids) {
+	        var data = createFrame(options.data);
+	        data.contextPath = Utils.appendContextPath(options.data.contextPath, options.ids[0]);
+	        options = {data:data};
+	      }
+
+	      return fn(context, options);
+	    } else {
+	      return options.inverse(this);
+	    }
+	  });
+
+	  instance.registerHelper('log', function(message, options) {
+	    var level = options.data && options.data.level != null ? parseInt(options.data.level, 10) : 1;
+	    instance.log(level, message);
+	  });
+
+	  instance.registerHelper('lookup', function(obj, field) {
+	    return obj && obj[field];
+	  });
+	}
+
+	var logger = {
+	  methodMap: { 0: 'debug', 1: 'info', 2: 'warn', 3: 'error' },
+
+	  // State enum
+	  DEBUG: 0,
+	  INFO: 1,
+	  WARN: 2,
+	  ERROR: 3,
+	  level: 3,
+
+	  // can be overridden in the host environment
+	  log: function(level, message) {
+	    if (logger.level <= level) {
+	      var method = logger.methodMap[level];
+	      if (typeof console !== 'undefined' && console[method]) {
+	        console[method].call(console, message);
+	      }
+	    }
+	  }
+	};
+	exports.logger = logger;
+	var log = logger.log;
+	exports.log = log;
+	var createFrame = function(object) {
+	  var frame = Utils.extend({}, object);
+	  frame._parent = object;
+	  return frame;
+	};
+	exports.createFrame = createFrame;
+	},{"./exception":4,"./utils":7}],4:[function(require,module,exports){
+	"use strict";
+
+	var errorProps = ['description', 'fileName', 'lineNumber', 'message', 'name', 'number', 'stack'];
+
+	function Exception(message, node) {
+	  var line;
+	  if (node && node.firstLine) {
+	    line = node.firstLine;
+
+	    message += ' - ' + line + ':' + node.firstColumn;
+	  }
+
+	  var tmp = Error.prototype.constructor.call(this, message);
+
+	  // Unfortunately errors are not enumerable in Chrome (at least), so `for prop in tmp` doesn't work.
+	  for (var idx = 0; idx < errorProps.length; idx++) {
+	    this[errorProps[idx]] = tmp[errorProps[idx]];
+	  }
+
+	  if (line) {
+	    this.lineNumber = line;
+	    this.column = node.firstColumn;
+	  }
+	}
+
+	Exception.prototype = new Error();
+
+	exports["default"] = Exception;
+	},{}],5:[function(require,module,exports){
+	"use strict";
+	var Utils = require("./utils");
+	var Exception = require("./exception")["default"];
+	var COMPILER_REVISION = require("./base").COMPILER_REVISION;
+	var REVISION_CHANGES = require("./base").REVISION_CHANGES;
+	var createFrame = require("./base").createFrame;
+
+	function checkRevision(compilerInfo) {
+	  var compilerRevision = compilerInfo && compilerInfo[0] || 1,
+	      currentRevision = COMPILER_REVISION;
+
+	  if (compilerRevision !== currentRevision) {
+	    if (compilerRevision < currentRevision) {
+	      var runtimeVersions = REVISION_CHANGES[currentRevision],
+	          compilerVersions = REVISION_CHANGES[compilerRevision];
+	      throw new Exception("Template was precompiled with an older version of Handlebars than the current runtime. "+
+	            "Please update your precompiler to a newer version ("+runtimeVersions+") or downgrade your runtime to an older version ("+compilerVersions+").");
+	    } else {
+	      // Use the embedded version info since the runtime doesn't know about this revision yet
+	      throw new Exception("Template was precompiled with a newer version of Handlebars than the current runtime. "+
+	            "Please update your runtime to a newer version ("+compilerInfo[1]+").");
+	    }
+	  }
+	}
+
+	exports.checkRevision = checkRevision;// TODO: Remove this line and break up compilePartial
+
+	function template(templateSpec, env) {
+	  /* istanbul ignore next */
+	  if (!env) {
+	    throw new Exception("No environment passed to template");
+	  }
+	  if (!templateSpec || !templateSpec.main) {
+	    throw new Exception('Unknown template object: ' + typeof templateSpec);
+	  }
+
+	  // Note: Using env.VM references rather than local var references throughout this section to allow
+	  // for external users to override these as psuedo-supported APIs.
+	  env.VM.checkRevision(templateSpec.compiler);
+
+	  var invokePartialWrapper = function(partial, indent, name, context, hash, helpers, partials, data, depths) {
+	    if (hash) {
+	      context = Utils.extend({}, context, hash);
+	    }
+
+	    var result = env.VM.invokePartial.call(this, partial, name, context, helpers, partials, data, depths);
+
+	    if (result == null && env.compile) {
+	      var options = { helpers: helpers, partials: partials, data: data, depths: depths };
+	      partials[name] = env.compile(partial, { data: data !== undefined, compat: templateSpec.compat }, env);
+	      result = partials[name](context, options);
+	    }
+	    if (result != null) {
+	      if (indent) {
+	        var lines = result.split('\n');
+	        for (var i = 0, l = lines.length; i < l; i++) {
+	          if (!lines[i] && i + 1 === l) {
+	            break;
+	          }
+
+	          lines[i] = indent + lines[i];
+	        }
+	        result = lines.join('\n');
+	      }
+	      return result;
+	    } else {
+	      throw new Exception("The partial " + name + " could not be compiled when running in runtime-only mode");
+	    }
+	  };
+
+	  // Just add water
+	  var container = {
+	    lookup: function(depths, name) {
+	      var len = depths.length;
+	      for (var i = 0; i < len; i++) {
+	        if (depths[i] && depths[i][name] != null) {
+	          return depths[i][name];
+	        }
+	      }
+	    },
+	    lambda: function(current, context) {
+	      return typeof current === 'function' ? current.call(context) : current;
+	    },
+
+	    escapeExpression: Utils.escapeExpression,
+	    invokePartial: invokePartialWrapper,
+
+	    fn: function(i) {
+	      return templateSpec[i];
+	    },
+
+	    programs: [],
+	    program: function(i, data, depths) {
+	      var programWrapper = this.programs[i],
+	          fn = this.fn(i);
+	      if (data || depths) {
+	        programWrapper = program(this, i, fn, data, depths);
+	      } else if (!programWrapper) {
+	        programWrapper = this.programs[i] = program(this, i, fn);
+	      }
+	      return programWrapper;
+	    },
+
+	    data: function(data, depth) {
+	      while (data && depth--) {
+	        data = data._parent;
+	      }
+	      return data;
+	    },
+	    merge: function(param, common) {
+	      var ret = param || common;
+
+	      if (param && common && (param !== common)) {
+	        ret = Utils.extend({}, common, param);
+	      }
+
+	      return ret;
+	    },
+
+	    noop: env.VM.noop,
+	    compilerInfo: templateSpec.compiler
+	  };
+
+	  var ret = function(context, options) {
+	    options = options || {};
+	    var data = options.data;
+
+	    ret._setup(options);
+	    if (!options.partial && templateSpec.useData) {
+	      data = initData(context, data);
+	    }
+	    var depths;
+	    if (templateSpec.useDepths) {
+	      depths = options.depths ? [context].concat(options.depths) : [context];
+	    }
+
+	    return templateSpec.main.call(container, context, container.helpers, container.partials, data, depths);
+	  };
+	  ret.isTop = true;
+
+	  ret._setup = function(options) {
+	    if (!options.partial) {
+	      container.helpers = container.merge(options.helpers, env.helpers);
+
+	      if (templateSpec.usePartial) {
+	        container.partials = container.merge(options.partials, env.partials);
+	      }
+	    } else {
+	      container.helpers = options.helpers;
+	      container.partials = options.partials;
+	    }
+	  };
+
+	  ret._child = function(i, data, depths) {
+	    if (templateSpec.useDepths && !depths) {
+	      throw new Exception('must pass parent depths');
+	    }
+
+	    return program(container, i, templateSpec[i], data, depths);
+	  };
+	  return ret;
+	}
+
+	exports.template = template;function program(container, i, fn, data, depths) {
+	  var prog = function(context, options) {
+	    options = options || {};
+
+	    return fn.call(container, context, container.helpers, container.partials, options.data || data, depths && [context].concat(depths));
+	  };
+	  prog.program = i;
+	  prog.depth = depths ? depths.length : 0;
+	  return prog;
+	}
+
+	exports.program = program;function invokePartial(partial, name, context, helpers, partials, data, depths) {
+	  var options = { partial: true, helpers: helpers, partials: partials, data: data, depths: depths };
+
+	  if(partial === undefined) {
+	    throw new Exception("The partial " + name + " could not be found");
+	  } else if(partial instanceof Function) {
+	    return partial(context, options);
+	  }
+	}
+
+	exports.invokePartial = invokePartial;function noop() { return ""; }
+
+	exports.noop = noop;function initData(context, data) {
+	  if (!data || !('root' in data)) {
+	    data = data ? createFrame(data) : {};
+	    data.root = context;
+	  }
+	  return data;
+	}
+	},{"./base":3,"./exception":4,"./utils":7}],6:[function(require,module,exports){
+	"use strict";
+	// Build out our basic SafeString type
+	function SafeString(string) {
+	  this.string = string;
+	}
+
+	SafeString.prototype.toString = function() {
+	  return "" + this.string;
+	};
+
+	exports["default"] = SafeString;
+	},{}],7:[function(require,module,exports){
+	"use strict";
+	/*jshint -W004 */
+	var SafeString = require("./safe-string")["default"];
+
+	var escape = {
+	  "&": "&amp;",
+	  "<": "&lt;",
+	  ">": "&gt;",
+	  '"': "&quot;",
+	  "'": "&#x27;",
+	  "`": "&#x60;"
+	};
+
+	var badChars = /[&<>"'`]/g;
+	var possible = /[&<>"'`]/;
+
+	function escapeChar(chr) {
+	  return escape[chr];
+	}
+
+	function extend(obj /* , ...source */) {
+	  for (var i = 1; i < arguments.length; i++) {
+	    for (var key in arguments[i]) {
+	      if (Object.prototype.hasOwnProperty.call(arguments[i], key)) {
+	        obj[key] = arguments[i][key];
+	      }
+	    }
+	  }
+
+	  return obj;
+	}
+
+	exports.extend = extend;var toString = Object.prototype.toString;
+	exports.toString = toString;
+	// Sourced from lodash
+	// https://github.com/bestiejs/lodash/blob/master/LICENSE.txt
+	var isFunction = function(value) {
+	  return typeof value === 'function';
+	};
+	// fallback for older versions of Chrome and Safari
+	/* istanbul ignore next */
+	if (isFunction(/x/)) {
+	  isFunction = function(value) {
+	    return typeof value === 'function' && toString.call(value) === '[object Function]';
+	  };
+	}
+	var isFunction;
+	exports.isFunction = isFunction;
+	/* istanbul ignore next */
+	var isArray = Array.isArray || function(value) {
+	  return (value && typeof value === 'object') ? toString.call(value) === '[object Array]' : false;
+	};
+	exports.isArray = isArray;
+
+	function escapeExpression(string) {
+	  // don't escape SafeStrings, since they're already safe
+	  if (string instanceof SafeString) {
+	    return string.toString();
+	  } else if (string == null) {
+	    return "";
+	  } else if (!string) {
+	    return string + '';
+	  }
+
+	  // Force a string conversion as this will be done by the append regardless and
+	  // the regex test will do this transparently behind the scenes, causing issues if
+	  // an object's to string has escaped characters in it.
+	  string = "" + string;
+
+	  if(!possible.test(string)) { return string; }
+	  return string.replace(badChars, escapeChar);
+	}
+
+	exports.escapeExpression = escapeExpression;function isEmpty(value) {
+	  if (!value && value !== 0) {
+	    return true;
+	  } else if (isArray(value) && value.length === 0) {
+	    return true;
+	  } else {
+	    return false;
+	  }
+	}
+
+	exports.isEmpty = isEmpty;function appendContextPath(contextPath, id) {
+	  return (contextPath ? contextPath + '.' : '') + id;
+	}
+
+	exports.appendContextPath = appendContextPath;
+	},{"./safe-string":6}],8:[function(require,module,exports){
+	// Create a simple path alias to allow browserify to resolve
+	// the runtime on a supported path.
+	module.exports = require('./dist/cjs/handlebars.runtime');
+
+	},{"./dist/cjs/handlebars.runtime":2}],9:[function(require,module,exports){
+	module.exports = require("handlebars/runtime")["default"];
+
+	},{"handlebars/runtime":8}],10:[function(require,module,exports){
+	module.exports={
+	  "name": "phaser-debug",
+	  "version": "1.1.8",
+	  "description": "Simple debug module for phaser",
+	  "author": "Chad Engler <chad@pantherdev.com>",
+	  "license": "MIT",
+	  "homepage": "https://github.com/englercj/phaser-debug",
+	  "repository": {
+	    "type": "git",
+	    "url": "https://github.com/englercj/phaser-debug.git"
+	  },
+	  "bugs": {
+	    "url": "https://github.com/englercj/phaser-debug/issues"
+	  },
+	  "keywords": [
+	    "phaser",
+	    "debug",
+	    "html5",
+	    "game",
+	    "engine"
+	  ],
+	  "dependencies": {
+	    "handlebars": "^2.0.0",
+	    "node-lessify": "^0.0.5",
+	    "hbsfy": "^2.1.0"
+	  },
+	  "devDependencies": {
+	    "browserify": "^5.11.1",
+	    "event-stream": "^3.1.7",
+	    "gulp": "^3.8.8",
+	    "gulp-bump": "^0.1.11",
+	    "gulp-git": "^0.5.3",
+	    "gulp-jshint": "^1.8.4",
+	    "gulp-util": "^3.0.1",
+	    "jshint-summary": "^0.4.0",
+	    "vinyl-source-stream": "^0.1.1",
+	    "watchify": "^1.0.2"
+	  },
+	  "main": "./dist/phaser-debug.js",
+	  "browser": "./src/index.js",
+	  "browserify": {
+	    "transform": [
+	      "hbsfy",
+	      "node-lessify"
+	    ],
+	    "transform-options": {
+	      "node-lessify": "textMode"
+	    }
+	  }
+	}
+
+	},{}],11:[function(require,module,exports){
+	// hbsfy compiled Handlebars template
+	var HandlebarsCompiler = require('hbsfy/runtime');
+	module.exports = HandlebarsCompiler.template({"1":function(depth0,helpers,partials,data) {
+	  var stack1, lambda=this.lambda, escapeExpression=this.escapeExpression;
+	  return "    <label>Children:</label>\n    <strong>"
+	    + escapeExpression(lambda(((stack1 = (depth0 != null ? depth0.children : depth0)) != null ? stack1.length : stack1), depth0))
+	    + "</strong>\n    <br/>\n";
+	},"3":function(depth0,helpers,partials,data) {
+	  var stack1, buffer = "    <label>Texture:</label>\n";
+	  stack1 = helpers['if'].call(depth0, ((stack1 = ((stack1 = ((stack1 = (depth0 != null ? depth0.texture : depth0)) != null ? stack1.baseTexture : stack1)) != null ? stack1.source : stack1)) != null ? stack1.src : stack1), {"name":"if","hash":{},"fn":this.program(4, data),"inverse":this.program(6, data),"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  return buffer + "    <br/>\n";
+	},"4":function(depth0,helpers,partials,data) {
+	  var stack1, lambda=this.lambda, escapeExpression=this.escapeExpression;
+	  return "        <a href=\""
+	    + escapeExpression(lambda(((stack1 = ((stack1 = ((stack1 = (depth0 != null ? depth0.texture : depth0)) != null ? stack1.baseTexture : stack1)) != null ? stack1.source : stack1)) != null ? stack1.src : stack1), depth0))
+	    + "\" target=\"_blank\">"
+	    + escapeExpression(lambda(((stack1 = ((stack1 = ((stack1 = (depth0 != null ? depth0.texture : depth0)) != null ? stack1.baseTexture : stack1)) != null ? stack1.source : stack1)) != null ? stack1.src : stack1), depth0))
+	    + "</a>\n";
+	},"6":function(depth0,helpers,partials,data) {
+	  var stack1, lambda=this.lambda, escapeExpression=this.escapeExpression;
+	  return "        <strong>"
+	    + escapeExpression(lambda(((stack1 = ((stack1 = (depth0 != null ? depth0.texture : depth0)) != null ? stack1.baseTexture : stack1)) != null ? stack1.source : stack1), depth0))
+	    + "</strong>\n";
+	},"compiler":[6,">= 2.0.0-beta.1"],"main":function(depth0,helpers,partials,data) {
+	  var stack1, helper, functionType="function", helperMissing=helpers.helperMissing, escapeExpression=this.escapeExpression, lambda=this.lambda, buffer = "<br/><br/>\n\n<label>Name:</label>\n<strong>"
+	    + escapeExpression(((helper = (helper = helpers.name || (depth0 != null ? depth0.name : depth0)) != null ? helper : helperMissing),(typeof helper === functionType ? helper.call(depth0, {"name":"name","hash":{},"data":data}) : helper)))
+	    + "</strong>\n<br/>\n\n<label>Type:</label>\n<strong>"
+	    + escapeExpression(((helper = (helper = helpers.typeString || (depth0 != null ? depth0.typeString : depth0)) != null ? helper : helperMissing),(typeof helper === functionType ? helper.call(depth0, {"name":"typeString","hash":{},"data":data}) : helper)))
+	    + "</strong>\n<br/>\n\n<label>Position:</label>\n<strong>"
+	    + escapeExpression(lambda(((stack1 = (depth0 != null ? depth0.position : depth0)) != null ? stack1.x : stack1), depth0))
+	    + "</strong> x <strong>"
+	    + escapeExpression(lambda(((stack1 = (depth0 != null ? depth0.position : depth0)) != null ? stack1.y : stack1), depth0))
+	    + "</strong>\n<br/>\n\n";
+	  stack1 = helpers['if'].call(depth0, (depth0 != null ? depth0.children : depth0), {"name":"if","hash":{},"fn":this.program(1, data),"inverse":this.noop,"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  buffer += "\n";
+	  stack1 = helpers['if'].call(depth0, (depth0 != null ? depth0.texture : depth0), {"name":"if","hash":{},"fn":this.program(3, data),"inverse":this.noop,"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  return buffer;
+	},"useData":true});
+
+	},{"hbsfy/runtime":9}],12:[function(require,module,exports){
+	// hbsfy compiled Handlebars template
+	var HandlebarsCompiler = require('hbsfy/runtime');
+	module.exports = HandlebarsCompiler.template({"compiler":[6,">= 2.0.0-beta.1"],"main":function(depth0,helpers,partials,data) {
+	  return "<ul class=\"sidebar\">\n</ul>\n\n<a href=\"#\" class=\"refresh\">refresh</a>\n<div class=\"details\">\n</div>\n";
+	  },"useData":true});
+
+	},{"hbsfy/runtime":9}],13:[function(require,module,exports){
+	// hbsfy compiled Handlebars template
+	var HandlebarsCompiler = require('hbsfy/runtime');
+	module.exports = HandlebarsCompiler.template({"1":function(depth0,helpers,partials,data) {
+	  var helper, functionType="function", helperMissing=helpers.helperMissing, escapeExpression=this.escapeExpression;
+	  return "        <span class=\"weak\">("
+	    + escapeExpression(((helper = (helper = helpers.name || (depth0 != null ? depth0.name : depth0)) != null ? helper : helperMissing),(typeof helper === functionType ? helper.call(depth0, {"name":"name","hash":{},"data":data}) : helper)))
+	    + ")</span>\n";
+	},"3":function(depth0,helpers,partials,data) {
+	  var stack1, buffer = "        <ul>\n";
+	  stack1 = helpers.each.call(depth0, (depth0 != null ? depth0.children : depth0), {"name":"each","hash":{},"fn":this.program(4, data),"inverse":this.noop,"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  return buffer + "        </ul>\n";
+	},"4":function(depth0,helpers,partials,data) {
+	  var stack1, buffer = "";
+	  stack1 = this.invokePartial(partials.sceneTree, '                ', 'sceneTree', depth0, undefined, helpers, partials, data);
+	  if (stack1 != null) { buffer += stack1; }
+	  return buffer;
+	},"compiler":[6,">= 2.0.0-beta.1"],"main":function(depth0,helpers,partials,data) {
+	  var stack1, helper, functionType="function", helperMissing=helpers.helperMissing, escapeExpression=this.escapeExpression, buffer = escapeExpression(((helper = (helper = helpers.listItemOpen || (depth0 != null ? depth0.listItemOpen : depth0)) != null ? helper : helperMissing),(typeof helper === functionType ? helper.call(depth0, {"name":"listItemOpen","hash":{},"data":data}) : helper)))
+	    + "\n    "
+	    + escapeExpression(((helper = (helper = helpers.typeString || (depth0 != null ? depth0.typeString : depth0)) != null ? helper : helperMissing),(typeof helper === functionType ? helper.call(depth0, {"name":"typeString","hash":{},"data":data}) : helper)))
+	    + "\n\n";
+	  stack1 = helpers['if'].call(depth0, (depth0 != null ? depth0.name : depth0), {"name":"if","hash":{},"fn":this.program(1, data),"inverse":this.noop,"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  buffer += "\n";
+	  stack1 = helpers['if'].call(depth0, (depth0 != null ? depth0.children : depth0), {"name":"if","hash":{},"fn":this.program(3, data),"inverse":this.noop,"data":data});
+	  if (stack1 != null) { buffer += stack1; }
+	  return buffer + "</li>\n";
+	},"usePartial":true,"useData":true});
+
+	},{"hbsfy/runtime":9}],14:[function(require,module,exports){
+	var ui = require('../util/ui');
+
+	function Panel(game, parent) {
+	    this.game = game;
+	    this.parent = parent;
+
+	    this.name = '';
+	    this.title = '';
+	    this.active = false;
+
+	    this._panel = null;
+	}
+
+	Panel.prototype.constructor = Panel;
+
+	module.exports = Panel;
+
+	//builds the html for a panel
+	Panel.prototype.createPanelElement = function () {
+	    var elm = this._panel = document.createElement('div');
+	    ui.addClass(elm, 'pdebug-panel ' + this.name);
+
+	    return elm;
+	};
+
+	//builds the html for this panels menu item
+	Panel.prototype.createMenuElement = function () {
+	    var elm = this._menuItem = document.createElement('a');
+
+	    elm.href = '#' + this.name;
+
+	    ui.addClass(elm, 'pdebug-menu-item ' + this.name);
+	    ui.setText(elm, this.title);
+
+	    return elm;
+	};
+
+	Panel.prototype.toggle = function () {
+	    if (this.active) {
+	        this.hide();
+	    } else {
+	        this.show();
+	    }
+	};
+
+	Panel.prototype.show = function () {
+	    this.active = true;
+	    ui.setStyle(this._panel, 'display', 'block');
+	};
+
+	Panel.prototype.hide = function () {
+	    this.active = false;
+	    ui.setStyle(this._panel, 'display', 'none');
+	};
+
+	Panel.prototype.destroy = function () {
+	    this.game = null;
+	    this.parent = null;
+
+	    this.name = null;
+	    this.title = null;
+	    this.active = null;
+
+	    this._panel = null;
+	};
+
+	},{"../util/ui":19}],15:[function(require,module,exports){
+	// TODO: Not measuring render time!!
+
+	var Panel = require('./Panel'),
+	    Graph = require('../util/Graph');
+
+	function Performance(game, parent) {
+	    Panel.call(this, game, parent);
+
+	    this.name = 'performance';
+	    this.title = 'Performance';
+	    this.eventQueue = [];
+
+	    this.graph = null;
+
+	    this.colorPalettes = {
+	        _default: [
+	            // Colors from: https://github.com/highslide-software/highcharts.com/blob/master/js/themes/grid.js
+	            '#058DC7', '#50B432', '#ED561B', '#DDDF00',
+	            '#24CBE5', '#64E572', '#FF9655', '#FFF263',
+	            '#6AF9C4',
+	            // Colors from: https://github.com/highslide-software/highcharts.com/blob/master/js/themes/dark-unica.js
+	            '#2b908f', '#90ee7e', '#f45b5b', '#7798BF',
+	            '#aaeeee', '#ff0066', '#eeaaee',
+	            '#55BF3B', '#DF5353', '#7798BF', '#aaeeee'
+	        ]
+	    };
+	}
+
+	Performance.prototype = Object.create(Panel.prototype);
+	Performance.prototype.constructor = Performance;
+
+	module.exports = Performance;
+
+	Performance.prototype.createPanelElement = function () {
+	    var elm = Panel.prototype.createPanelElement.call(this);
+
+	    this.graph = new Graph(elm, window.innerWidth - 20, 256, this.colorPalettes._default);
+
+	    return elm;
+	};
+
+	Performance.prototype.update = function () {
+	    this.graph.addData(this.parent.timings, this.eventQueue.shift());
+	};
+
+	Performance.prototype.mark = function (label) {
+	    this.eventQueue.push(label);
+	};
+
+	Performance.prototype.destroy = function () {
+	    Panel.prototype.destroy.call(this);
+
+	    this.graph.destroy();
+
+	    this.eventQueue = null;
+	    this.graph = null;
+	    this.colorPalettes = null;
+	};
+
+	},{"../util/Graph":18,"./Panel":14}],16:[function(require,module,exports){
+	var Panel = require('./Panel'),
+	    ui = require('../util/ui'),
+	    Handlebars = require('hbsfy/runtime');
+
+	//require templates
+	var panelHtml = require('../hbs/scene/panel.hbs'),
+	    detailsHtml = require('../hbs/scene/details.hbs'),
+	    treeHtml = require('../hbs/scene/tree.hbs'),
+	    _cache = {},
+	    _id = 0;
+
+	Handlebars.registerPartial('sceneDetails', detailsHtml);
+	Handlebars.registerPartial('sceneTree', treeHtml);
+	Handlebars.registerHelper('typeString', typeToString);
+	Handlebars.registerHelper('listItemOpen', listItemOpen);
+
+	function Scene(game, parent) {
+	    Panel.call(this, game, parent);
+
+	    this.name = 'scene';
+	    this.title = 'Scene Tree';
+
+	    this._tree = null;
+
+	    this.tree = null;
+	    this.details = null;
+	    this.refresh = null;
+
+	    this.selected = null;
+	}
+
+	Scene.prototype = Object.create(Panel.prototype);
+	Scene.prototype.constructor = Scene;
+
+	module.exports = Scene;
+
+	Scene.prototype.createPanelElement = function () {
+	    Panel.prototype.createPanelElement.call(this);
+
+	    this._panel.innerHTML = panelHtml(this.game.stage);
+
+	    this.tree = this._panel.querySelector('.sidebar');
+	    this.details = this._panel.querySelector('.details');
+	    this.refresh = this._panel.querySelector('.refresh');
+
+	    ui.on(this.tree, 'click', 'li', this._onLiClick.bind(this));
+	    ui.on(this.refresh, 'click', this._onRefreshClick.bind(this));
+
+	    // this.renderer = new PIXI.CanvasRenderer(
+	    //     512,
+	    //     256,
+	    //     document.createElement('canvas'),
+	    //     true
+	    // );
+
+	    return this._panel;
+	};
+
+	Scene.prototype.rebuildTree = function () {
+	    ui.empty(this.tree);
+
+	    _cache = {};
+
+	    this.tree.innerHTML = treeHtml(this.game.stage);
+
+	    this.select(this.tree.querySelector('li:first-child'));
+	    ui.addClass(this.selected, 'expanded');
+
+	    this.reloadDetails();
+	};
+
+	Scene.prototype.reloadDetails = function () {
+	    var id = this.selected.dataset.id;
+
+	    this.details.innerHTML = detailsHtml(_cache[id]);
+	    // this.details.appendChild(this.renderer.view);
+
+	    // this.renderer.renderDisplayObject(_cache[id]);
+	};
+
+	Scene.prototype.select = function (li) {
+	    if (this.selected) {
+	        ui.removeClass(this.selected, 'selected');
+	    }
+
+	    this.selected = li;
+	    ui.addClass(this.selected, 'selected');
+	};
+
+	Scene.prototype.show = function () {
+	    this.rebuildTree();
+
+	    Panel.prototype.show.call(this);
+	};
+
+	Scene.prototype.destroy = function () {
+	    Panel.prototype.destroy.call(this);
+
+	    this.tree = null;
+	    this.details = null;
+	    this.refresh = null;
+	};
+
+	Scene.prototype._onLiClick = function (e) {
+	    e.stopPropagation();
+
+	    this.select(e.delegateTarget);
+
+	    ui.toggleClass(e.delegateTarget, 'expanded');
+
+	    this.reloadDetails();
+	};
+
+	Scene.prototype._onRefreshClick = function (e) {
+	    e.preventDefault();
+	    e.stopPropagation();
+
+	    this.rebuildTree();
+	};
+
+	function listItemOpen () {
+	    _cache[++_id] = this;
+
+	    return new Handlebars.SafeString(
+	        '<li ' + (this.children && this.children.length ? 'class="has-children" ' : '') + 'data-id="' + _id + '">'
+	    );
+	}
+
+	function typeToString () {
+	    var node = this;
+
+	    // If no phaser type defined, try to guess
+	    if (node.type === undefined) {
+	        // Phaser.Stage does not have its 'type' property defined, so check here.
+	        if (node instanceof Phaser.Stage) {
+	            return 'Stage';
+	        }
+	        // PIXI.Stage was removed in Phaser 2.4.4, so make sure it's defined first.
+	        else if (typeof PIXI.Stage !== 'undefined' &&
+	            node instanceof PIXI.Stage) {
+	            return 'PIXI Stage';
+	        }
+	        else if (node instanceof PIXI.Sprite) {
+	            return 'PIXI Sprite';
+	        }
+	        else if (node instanceof PIXI.DisplayObjectContainer) {
+	            return 'PIXI DisplayObjectContainer';
+	        }
+	        else if (node instanceof PIXI.DisplayObject) {
+	            return 'PIXI DisplayObject';
+	        }
+	        else {
+	            return 'Unknown';
+	        }
+	    }
+	    // return a string for the phaser type
+	    else {
+	        switch(node.type) {
+	            case Phaser.SPRITE:
+	                return 'Sprite';
+
+	            case Phaser.BUTTON:
+	                return 'Button';
+
+	            case Phaser.IMAGE:
+	                return 'Image';
+
+	            case Phaser.GRAPHICS:
+	                return 'Graphics';
+
+	            case Phaser.TEXT:
+	                return 'Text';
+
+	            case Phaser.TILESPRITE:
+	                return 'Tile Sprite';
+
+	            case Phaser.BITMAPTEXT:
+	                return 'Bitmap Text';
+
+	            case Phaser.GROUP:
+	                return 'Group';
+
+	            case Phaser.RENDERTEXTURE:
+	                return 'Render Texture';
+
+	            case Phaser.TILEMAP:
+	                return 'Tilemap';
+
+	            case Phaser.TILEMAPLAYER:
+	                return 'Tilemap Layer';
+
+	            case Phaser.EMITTER:
+	                return 'Emitter';
+
+	            case Phaser.POLYGON:
+	                return 'Polygon';
+
+	            case Phaser.BITMAPDATA:
+	                return 'Bitmap Data';
+
+	            case Phaser.CANVAS_FILTER:
+	                return 'Canvas Filter';
+
+	            case Phaser.WEBGL_FILTER:
+	                return 'WebGL Filter';
+
+	            case Phaser.ELLIPSE:
+	                return 'Ellipse';
+
+	            case Phaser.SPRITEBATCH:
+	                return 'Sprite Batch';
+
+	            case Phaser.RETROFONT:
+	                return 'Retro Font';
+
+	            case Phaser.POINTER:
+	                return 'Pointer';
+
+	            case Phaser.ROPE:
+	                return 'Rope';
+
+	            default:
+	                return 'Unknown';
+	        }
+	    }
+	}
+
+	},{"../hbs/scene/details.hbs":11,"../hbs/scene/panel.hbs":12,"../hbs/scene/tree.hbs":13,"../util/ui":19,"./Panel":14,"hbsfy/runtime":9}],17:[function(require,module,exports){
+	module.exports = ".pdebug{font-size:14px;position:fixed;bottom:0;width:100%;color:#aaa;background:#333;border-top:3px solid #00bf00;z-index:999999}.pdebug a{color:#00bf00}.pdebug label{display:inline-block;width:60px}.pdebug strong{font-weight:400;color:#fff}.pdebug .weak{color:#aaa}.pdebug .pdebug-menu{height:32px;padding:0 15px;text-shadow:1px 1px 0 #111;background:#333}.pdebug .pdebug-menu span{display:inline-block;height:32px;line-height:32px}.pdebug .pdebug-menu .pdebug-head{padding-right:25px;border-right:1px solid #666}.pdebug .pdebug-menu .pdebug-stats{float:right;padding:0 0 0 10px}.pdebug .pdebug-menu .pdebug-stats .pdebug-stats-item{display:inline-block;width:100px;text-align:right}.pdebug .pdebug-menu .pdebug-stats .pdebug-stats-item>span{color:#fff}.pdebug .pdebug-menu .pdebug-stats .pdebug-stats-item.obj{width:100px;border:0}.pdebug .pdebug-menu .pdebug-menu-item{color:#fff;display:inline-block;text-decoration:none;padding:0 10px;height:32px;line-height:32px;border-right:1px solid #666}.pdebug .pdebug-menu .pdebug-menu-item.active{color:#00bf00;background:#111}.pdebug .pdebug-panel{display:none;height:265px;overflow:auto;font-size:12px;background:#111}.pdebug .pdebug-panel.scene .sidebar{float:left;height:100%;min-width:175px;max-width:500px;resize:horizontal;overflow:auto}.pdebug .pdebug-panel.scene .details{float:left;height:100%}.pdebug .pdebug-panel.scene .refresh{position:absolute}.pdebug .pdebug-panel.scene>ul{padding:0;margin:0;border-right:solid 1px #aaa;margin-right:10px}.pdebug .pdebug-panel.scene>ul li{color:#fff;list-style:none;cursor:pointer}.pdebug .pdebug-panel.scene>ul li.expanded>ul{display:block}.pdebug .pdebug-panel.scene>ul li.selected{color:#00bf00}.pdebug .pdebug-panel.scene>ul li::before{content:\'-\';display:inline-block;width:12px;height:1px;color:#aaa}.pdebug .pdebug-panel.scene>ul li.has-children::before{content:\'\';display:inline-block;width:0;height:0;margin:0 6px 0 0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-right:0;border-left:6px solid rgba(255,255,255,.3)}.pdebug .pdebug-panel.scene>ul li.has-children.expanded::before{margin:0 4px 0 -4px;border-top:6px solid rgba(255,255,255,.3);border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:0}.pdebug .pdebug-panel.scene>ul li>ul{display:none;padding:0 0 0 10px}.pdebug input[type=checkbox]{visibility:hidden}.pdebug .checkbox{width:75px;height:26px;background:#333;position:relative;line-height:normal;-webkit-border-radius:50px;-moz-border-radius:50px;border-radius:50px;-webkit-box-shadow:inset 0 1px 1px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.2);-moz-box-shadow:inset 0 1px 1px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.2);-o-box-shadow:inset 0 1px 1px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.2);-ms-box-shadow:inset 0 1px 1px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.2);box-shadow:inset 0 1px 1px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.2)}.pdebug .checkbox:after{content:\'OFF\';font:12px/26px Arial,sans-serif;color:#000;position:absolute;right:10px;z-index:0;font-weight:700;text-shadow:1px 1px 0 rgba(255,255,255,.15)}.pdebug .checkbox:before{content:\'ON\';font:12px/26px Arial,sans-serif;color:#00bf00;position:absolute;left:10px;z-index:0;font-weight:700}.pdebug .checkbox+span{position:relative;display:block;top:-25px;left:90px;width:200px;color:#fcfff4;font-size:1.1em}.pdebug .checkbox input[type=checkbox]:checked+label{left:38px}.pdebug .checkbox label{display:block;width:34px;height:20px;-webkit-border-radius:50px;-moz-border-radius:50px;border-radius:50px;-webkit-transition:all .4s ease;-moz-transition:all .4s ease;-o-transition:all .4s ease;-ms-transition:all .4s ease;transition:all .4s ease;cursor:pointer;position:absolute;top:3px;left:3px;z-index:1;background:#fcfff4;background:-webkit-linear-gradient(top,#fcfff4 0,#dfe5d7 40%,#b3bead 100%);background:-moz-linear-gradient(top,#fcfff4 0,#dfe5d7 40%,#b3bead 100%);background:-o-linear-gradient(top,#fcfff4 0,#dfe5d7 40%,#b3bead 100%);background:-ms-linear-gradient(top,#fcfff4 0,#dfe5d7 40%,#b3bead 100%);background:linear-gradient(top,#fcfff4 0,#dfe5d7 40%,#b3bead 100%);-webkit-box-shadow:0 2px 5px 0 rgba(0,0,0,.3);-moz-box-shadow:0 2px 5px 0 rgba(0,0,0,.3);box-shadow:0 2px 5px 0 rgba(0,0,0,.3)}";
+	},{}],18:[function(require,module,exports){
+	// TODO: Move the legend into DOM?
+
+	function Graph(container, width, height, colors, options) {
+	    options = options || {};
+
+	    this.canvas = document.createElement('canvas');
+	    this.canvas.width = width;
+	    this.canvas.height = height;
+	    container.appendChild(this.canvas);
+
+	    this.ctx = this.canvas.getContext('2d');
+
+	    this.labelStyle = 'rgba(200, 200, 200, 0.6)';
+
+	    this.maxValue = options.maxValue || 50;
+	    this.padding = options.labelPadding || 5;
+
+	    this.dataLineWidth = options.lineWidth || 1;
+	    this.legendWidth = 230;
+	    this.legendBoxSize = 10;
+	    this.legendIndent = 5;
+
+	    this.eventY = this.padding * 2;
+
+	    this.colors = colors;
+
+	    this.dataCanvas = document.createElement('canvas');
+	    this.dataCanvas.width = width - this.legendWidth;
+	    this.dataCanvas.height = height;
+	    this.dctx = this.dataCanvas.getContext('2d');
+
+	    this.dataCanvasBuffer = document.createElement('canvas');
+	    this.dataCanvasBuffer.width = this.dataCanvas.width - this.dataLineWidth;
+	    this.dataCanvasBuffer.height = this.dataCanvas.height;
+	    this.bctx = this.dataCanvasBuffer.getContext('2d');
+	}
+
+	Graph.prototype.constructor = Graph;
+
+	module.exports = Graph;
+
+	// render the graph with the new data point
+	Graph.prototype.addData = function (values, event) {
+	    // clear the main canvas
+	    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+	    this.drawBg();
+	    this.drawLegend(values);
+	    this.drawData(values, event);
+	};
+
+	Graph.prototype.drawBg = function () {
+	    var fps60 = Math.floor(this.canvas.height - (this.canvas.height * (16 / this.maxValue))) + 0.5,
+	        fps30 = Math.floor(this.canvas.height - (this.canvas.height * (33 / this.maxValue))) + 0.5;
+
+	    this.ctx.strokeStyle = this.ctx.fillStyle = this.labelStyle;
+	    this.ctx.lineWidth = 1;
+
+	    //draw top marker line
+	    this.ctx.beginPath();
+	    this.ctx.moveTo(this.legendWidth, fps60);
+	    this.ctx.lineTo(this.canvas.width, fps60);
+	    this.ctx.stroke();
+
+	    this.ctx.fillText('16ms (60 fps)', this.legendWidth + this.padding, fps60 - this.padding);
+
+	    //draw the second marker line
+	    this.ctx.beginPath();
+	    this.ctx.moveTo(this.legendWidth, fps30);
+	    this.ctx.lineTo(this.canvas.width, fps30);
+	    this.ctx.stroke();
+
+	    this.ctx.fillText('33ms (30 fps)', this.legendWidth + this.padding, fps30 - this.padding);
+
+	    //draw baseline marker
+	    this.ctx.beginPath();
+	    this.ctx.moveTo(this.legendWidth, this.canvas.height - 0.5);
+	    this.ctx.lineTo(this.canvas.width, this.canvas.height - 0.5);
+	    this.ctx.stroke();
+	};
+
+	Graph.prototype.drawLegend = function (values) {
+	    var colorIndex = 0,
+	        yIndex = 0,
+	        x = this.padding,
+	        y = 0;
+
+	    for (var k in values) {
+	        y = (yIndex * this.legendBoxSize) + (this.padding * (yIndex + 1)) + this.padding;
+
+	        // Draw parent label
+	        this.ctx.fillStyle = this.labelStyle;
+	        this.ctx.fillText(k, x, y);
+
+	        ++yIndex;
+
+	        // Draw children
+	        for (var c in values[k]) {
+	            y = (yIndex * this.legendBoxSize) + (this.padding * yIndex);
+
+	            this.ctx.fillStyle = this.colors[colorIndex++ % this.colors.length];
+	            this.ctx.fillRect(x + this.legendIndent, y, this.legendBoxSize, this.legendBoxSize);
+
+	            this.ctx.fillStyle = this.labelStyle;
+	            this.ctx.fillText(
+	                Math.round(values[k][c]) + 'ms - ' + c,
+	                x + this.legendIndent + this.legendBoxSize + this.padding,
+	                y + this.legendBoxSize
+	            );
+
+	            ++yIndex;
+
+	            if (yIndex > 16) {
+	                x += this.legendWidth / 2;
+	                yIndex = 0;
+	            }
+	        }
+	    }
+	};
+
+	Graph.prototype.drawData = function (values, event) {
+	    var x = this.dataCanvas.width - this.dataLineWidth + 0.5,
+	        y = this.dataCanvas.height - 0.5;
+
+	    // clear the buffer
+	    this.bctx.clearRect(0, 0, this.dataCanvasBuffer.width, this.dataCanvasBuffer.height);
+
+	    // draw the data canvas to the buffer, skipping the first line
+	    this.bctx.drawImage(
+	        this.dataCanvas,
+	        this.dataLineWidth, 0, x, y,
+	        0, 0, x, y
+	    );
+
+	    // clear the data canvas
+	    this.dctx.clearRect(0, 0, this.dataCanvas.width, this.dataCanvas.height);
+
+	    // draw the buffer back to the data canvas
+	    this.dctx.drawImage(this.dataCanvasBuffer, 0, 0);
+
+	    // draw event to the new line of the data canvas if there was one
+	    if (event) {
+	        this.dctx.beginPath();
+	        this.dctx.strokeStyle = this.dctx.fillStyle = '#ff0000';
+	        this.dctx.lineWidth = this.dataLineWidth;
+
+	        this.dctx.moveTo(x, y);
+	        this.dctx.lineTo(x, 0);
+
+	        this.dctx.stroke();
+
+	        this.dctx.textAlign = 'right';
+	        this.dctx.fillText(event, x - this.padding, this.eventY);
+
+	        this.eventY += (this.padding * 2);
+
+	        if (this.eventY > (this.dataCanvas.height / 2)) {
+	            this.eventY = (this.padding * 2);
+	        }
+	    }
+
+	    // draws the data values to the new line of the data canvas
+
+	    // draw the new data points
+	    var colorIndex = 0,
+	        step = 0;
+
+	    for (var k in values) {
+	        for (var c in values[k]) {
+	            this.dctx.beginPath();
+	            this.dctx.strokeStyle = this.dctx.fillStyle = this.colors[colorIndex++ % this.colors.length];
+	            this.dctx.lineWidth = this.dataLineWidth;
+
+	            step = ((values[k][c] / this.maxValue) * this.dataCanvas.height);
+	            step = step < 0 ? 0 : step;
+
+	            this.dctx.moveTo(x, y);
+	            this.dctx.lineTo(x, y-=step);
+
+	            this.dctx.stroke();
+	        }
+	    }
+
+	    // draw the data canvas to the main rendered canvas
+	    this.ctx.drawImage(this.dataCanvas, this.legendWidth, 0);
+	};
+
+	Graph.prototype.destroy = function () {
+	    this.canvas = null;
+	    this.ctx = null;
+
+	    this.labelStyle = null;
+
+	    this.maxValue = null;
+	    this.padding = null;
+
+	    this.dataLineWidth = null;
+	    this.legendWidth = null;
+	    this.legendBoxSize = null;
+	    this.legendIndent = null;
+
+	    this.colors = null;
+
+	    this.dataCanvas = null;
+	    this.dctx = null;
+
+	    this.dataCanvasBuffer = null;
+	    this.bctx = null;
+	};
+
+	},{}],19:[function(require,module,exports){
+	//Some general dom helpers
+	var ui = {
+	    delegate: function (dom, evt, selector, fn) {
+	        dom.addEventListener(evt, function(e) {
+	            window.target = e.target;
+	            if (e.target && e.target.matches(selector)) {
+	                e.delegateTarget = e.target;
+
+	                if (fn) {
+	                    fn(e);
+	                }
+	            }
+	            else if (e.target.parentElement && e.target.parentElement.matches(selector)) {
+	                e.delegateTarget = e.target.parentElement;
+
+	                if (fn) {
+	                    fn(e);
+	                }
+	            }
+	        });
+	    },
+
+	    on: function (dom, evt, delegate, fn) {
+	        if (typeof delegate === 'function') {
+	            fn = delegate;
+	            delegate = null;
+	        }
+
+	        if (delegate) {
+	            return ui.delegate(dom, evt, delegate, fn);
+	        }
+
+	        dom.addEventListener(evt, fn);
+	    },
+
+	    removeClass: function (dom, cls) {
+	        var classes = dom.className.split(' '),
+	            i = classes.indexOf(cls);
+
+	        if(i !== -1) {
+	            classes.splice(i, 1);
+	            dom.className = classes.join(' ').trim();
+	        }
+	    },
+
+	    addClass: function (dom, cls) {
+	        var classes = dom.className.split(' ');
+
+	        classes.push(cls);
+	        dom.className = classes.join(' ').trim();
+	    },
+
+	    hasClass: function (dom, cls) {
+	        return dom.className.split(' ').indexOf(cls) !== -1;
+	    },
+
+	    toggleClass: function (dom, cls) {
+	        if (ui.hasClass(dom, cls)) {
+	            ui.removeClass(dom, cls);
+	        } else {
+	            ui.addClass(dom, cls);
+	        }
+	    },
+
+	    setText: function (dom, txt) {
+	        dom.textContent = txt;
+	    },
+
+	    setHtml: function (dom, html) {
+	        dom.innerHTML = html;
+	    },
+
+	    setStyle: function (dom, style, value) {
+	        if(typeof style === 'string') {
+	            dom.style[style] = value;
+	        } else {
+	            for(var key in style) {
+	                dom.style[key] = style[key];
+	            }
+	        }
+	    },
+
+	    empty: function (dom) {
+	        while(dom.firstChild) {
+	            dom.removeChild(dom.firstChild);
+	        }
+	    },
+
+	    show: function (dom) {
+	        ui.setStyle(dom, 'display', 'block');
+	    },
+
+	    hide: function (dom) {
+	        ui.setStyle(dom, 'display', 'none');
+	    },
+
+	    clear: function () {
+	        var br = document.createElement('br');
+	        ui.setStyle(br, 'clear', 'both');
+
+	        return br;
+	    },
+
+	    addCss: function (css) {
+	        var style = document.createElement('style');
+
+	        style.type = 'text/css';
+
+	        if (style.styleSheet){
+	            style.styleSheet.cssText = css;
+	        } else {
+	            style.appendChild(document.createTextNode(css));
+	        }
+
+	        document.head.appendChild(style);
+	    }
+	};
+
+	module.exports = ui;
+
+	// polyfill for matchesSelector
+	if (!HTMLElement.prototype.matches) {
+	    var htmlprot = HTMLElement.prototype;
+
+	    htmlprot.matches =
+	        htmlprot.matches ||
+	        htmlprot.webkitMatchesSelector ||
+	        htmlprot.mozMatchesSelector ||
+	        htmlprot.msMatchesSelector ||
+	        htmlprot.oMatchesSelector ||
+	        function (selector) {
+	            // poorman's polyfill for matchesSelector
+	            var elements = this.parentElement.querySelectorAll(selector),
+	                element,
+	                i = 0;
+
+	            while (element = elements[i++]) {
+	                if (element === this) {
+	                    return true;
+	                }
+	            }
+
+	            return false;
+	        };
+	}
+
+	},{}]},{},[1])(1)
+	});
+
+
+/***/ },
+/* 28 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var GameObject = __webpack_require__(29);
+	var KeyCodes = __webpack_require__(30);
+
+	// Shortcuts
+	var game, ship, speed = 0;
+
+	/**
+	 * Player represent player objects
+	 *
+	 * @name Player
+	 * @class Player
+	 */
+	module.exports = GameObject.extend({
+
+	    /**
+	     * Ship sprite
+	     *
+	     * @type {Phaser.Sprite}
+	     */
+	    ship: null,
+
+	    /**
+	     * Preload is called first. Normally you'd use this to load your game assets (or those needed for the current State)
+	     * You shouldn't create any objects in this method that require assets that you're also loading in this method, as
+	     * they won't yet be available.
+	     */
+	    preload: function(){
+
+	        game = this.game;
+
+	        game.load.image('ship', 'assets/general/ship.png');
+	    },
+
+	    /**
+	     * Create is called once preload has completed, this includes the loading of any assets from the Loader.
+	     * If you don't have a preload method then create is the first method called in your State.
+	     */
+	    create: function(){
+
+	        // Add ship to stage
+	        ship = this.ship = game.add.sprite(game.world.centerX, game.world.centerY, 'ship');
+	        ship.anchor.set(0.5);
+
+	        // Add physics
+	        game.physics.enable(ship, Phaser.Physics.ARCADE);
+
+	        // Setup physics
+	        ship.body.drag.set(0);
+	        ship.body.maxVelocity.set(200);
+
+	        // Camera setup
+	        //game.camera.follow(ship, Phaser.Camera.FOLLOW_TOPDOWN_TIGHT);
+	    },
+
+	    /**
+	     * Update is called after all the core subsystems (Input, Tweens, Sound, etc) and the State have updated,
+	     * but before the render. It is only called if active is set to true.
+	     */
+	    update: function(){
+
+	        ship.rotation = game.physics.arcade.angleToPointer(ship);
+
+	        if(game.input.keyboard.isDown(KeyCodes.SPACEBAR)){
+	            speed += 5;
+	            game.physics.arcade.accelerationFromRotation(ship.rotation, speed, ship.body.acceleration);
+	        }else{
+	            speed = 0;
+	        }
+
+	    },
+
+	    /**
+	     * Render is called right after the Game Renderer completes,
+	     * but before the State.render. It is only called if visible is set to true.
+	     */
+	    render: function(){
+
+	        if(game.isDebugEnabled){
+	            game.debug.spriteInfo(ship, 32, 32);
+	            game.debug.bodyInfo(ship, 400, 32);
+	            game.debug.body(ship);
+	            game.debug.cameraInfo(game.camera, 32, 120);
+	        }
+	    }
+
+	});
+
+
+/***/ },
+/* 29 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var Class = __webpack_require__(16);
+	var Phaser = __webpack_require__(13);
+	var Events = __webpack_require__(11);
+
+	/**
+	 * Basic game object
+	 *
+	 * @parent {Phaser.Plugin}
+	 * @parent {Events}
+	 *
+	 * @class GameObject
+	 * @name GameObject
+	 */
+	module.exports = Class.extend([Events, Phaser.Plugin], {
+
+	    /**
+	     * Init plugin instance
+	     *
+	     * @constructor
+	     *
+	     * @param gameLink
+	     * @param parent
+	     */
+	    constructor: function(gameLink, parent){
+	        this.game = gameLink;
+	        this.parent = parent || null;
+	    },
+
+	    /**
+	     * Plugin init event
+	     */
+	    init: function(){
+	        this.disable(); // Disable updates and render for gameObject, we will enable it after create event
+	    },
+
+	    /**
+	     * Before create event
+	     */
+	    beforeCreate: function(){
+	        if(this.create){ this.create(); }
+	        this.enable();
+	    },
+
+	    /**
+	     * Enable render and update events
+	     */
+	    enable: function(){
+
+	        if(this.preUpdate) this.hasPreUpdate = true;
+	        if(this.update) this.hasUpdate = true;
+	        if(this.postUpdate) this.hasPostUpdate = true;
+	        if(this.render) this.hasRender = true;
+	        if(this.postRender) this.hasPostRender = true;
+
+	        if (this.hasPreUpdate || this.hasUpdate || this.hasPostUpdate)
+	        {
+	            this.active = true;
+	        }
+
+	        if (this.hasRender || this.hasPostRender)
+	        {
+	            this.visible = true;
+	        }
+
+	    },
+
+	    /**
+	     * Disable plugin rendering end updates
+	     */
+	    disable: function(){
+
+	        this.hasUpdate = false;
+	        this.hasPreUpdate = false;
+	        this.hasPostUpdate = false;
+	        this.hasRender = false;
+	        this.hasPostRender = false;
+
+	        this.active = false;
+	        this.visible = false;
+	    }
+
+	});
+
+
+/***/ },
+/* 30 */
+/***/ function(module, exports) {
+
+	
+	var KeyCodes = {
+
+	    /** @static */
+	    A: "A".charCodeAt(0),
+	    /** @static */
+	    B: "B".charCodeAt(0),
+	    /** @static */
+	    C: "C".charCodeAt(0),
+	    /** @static */
+	    D: "D".charCodeAt(0),
+	    /** @static */
+	    E: "E".charCodeAt(0),
+	    /** @static */
+	    F: "F".charCodeAt(0),
+	    /** @static */
+	    G: "G".charCodeAt(0),
+	    /** @static */
+	    H: "H".charCodeAt(0),
+	    /** @static */
+	    I: "I".charCodeAt(0),
+	    /** @static */
+	    J: "J".charCodeAt(0),
+	    /** @static */
+	    K: "K".charCodeAt(0),
+	    /** @static */
+	    L: "L".charCodeAt(0),
+	    /** @static */
+	    M: "M".charCodeAt(0),
+	    /** @static */
+	    N: "N".charCodeAt(0),
+	    /** @static */
+	    O: "O".charCodeAt(0),
+	    /** @static */
+	    P: "P".charCodeAt(0),
+	    /** @static */
+	    Q: "Q".charCodeAt(0),
+	    /** @static */
+	    R: "R".charCodeAt(0),
+	    /** @static */
+	    S: "S".charCodeAt(0),
+	    /** @static */
+	    T: "T".charCodeAt(0),
+	    /** @static */
+	    U: "U".charCodeAt(0),
+	    /** @static */
+	    V: "V".charCodeAt(0),
+	    /** @static */
+	    W: "W".charCodeAt(0),
+	    /** @static */
+	    X: "X".charCodeAt(0),
+	    /** @static */
+	    Y: "Y".charCodeAt(0),
+	    /** @static */
+	    Z: "Z".charCodeAt(0),
+	    /** @static */
+	    ZERO: "0".charCodeAt(0),
+	    /** @static */
+	    ONE: "1".charCodeAt(0),
+	    /** @static */
+	    TWO: "2".charCodeAt(0),
+	    /** @static */
+	    THREE: "3".charCodeAt(0),
+	    /** @static */
+	    FOUR: "4".charCodeAt(0),
+	    /** @static */
+	    FIVE: "5".charCodeAt(0),
+	    /** @static */
+	    SIX: "6".charCodeAt(0),
+	    /** @static */
+	    SEVEN: "7".charCodeAt(0),
+	    /** @static */
+	    EIGHT: "8".charCodeAt(0),
+	    /** @static */
+	    NINE: "9".charCodeAt(0),
+	    /** @static */
+	    NUMPAD_0: 96,
+	    /** @static */
+	    NUMPAD_1: 97,
+	    /** @static */
+	    NUMPAD_2: 98,
+	    /** @static */
+	    NUMPAD_3: 99,
+	    /** @static */
+	    NUMPAD_4: 100,
+	    /** @static */
+	    NUMPAD_5: 101,
+	    /** @static */
+	    NUMPAD_6: 102,
+	    /** @static */
+	    NUMPAD_7: 103,
+	    /** @static */
+	    NUMPAD_8: 104,
+	    /** @static */
+	    NUMPAD_9: 105,
+	    /** @static */
+	    NUMPAD_MULTIPLY: 106,
+	    /** @static */
+	    NUMPAD_ADD: 107,
+	    /** @static */
+	    NUMPAD_ENTER: 108,
+	    /** @static */
+	    NUMPAD_SUBTRACT: 109,
+	    /** @static */
+	    NUMPAD_DECIMAL: 110,
+	    /** @static */
+	    NUMPAD_DIVIDE: 111,
+	    /** @static */
+	    F1: 112,
+	    /** @static */
+	    F2: 113,
+	    /** @static */
+	    F3: 114,
+	    /** @static */
+	    F4: 115,
+	    /** @static */
+	    F5: 116,
+	    /** @static */
+	    F6: 117,
+	    /** @static */
+	    F7: 118,
+	    /** @static */
+	    F8: 119,
+	    /** @static */
+	    F9: 120,
+	    /** @static */
+	    F10: 121,
+	    /** @static */
+	    F11: 122,
+	    /** @static */
+	    F12: 123,
+	    /** @static */
+	    F13: 124,
+	    /** @static */
+	    F14: 125,
+	    /** @static */
+	    F15: 126,
+	    /** @static */
+	    COLON: 186,
+	    /** @static */
+	    EQUALS: 187,
+	    /** @static */
+	    COMMA: 188,
+	    /** @static */
+	    UNDERSCORE: 189,
+	    /** @static */
+	    PERIOD: 190,
+	    /** @static */
+	    QUESTION_MARK: 191,
+	    /** @static */
+	    TILDE: 192,
+	    /** @static */
+	    OPEN_BRACKET: 219,
+	    /** @static */
+	    BACKWARD_SLASH: 220,
+	    /** @static */
+	    CLOSED_BRACKET: 221,
+	    /** @static */
+	    QUOTES: 222,
+	    /** @static */
+	    BACKSPACE: 8,
+	    /** @static */
+	    TAB: 9,
+	    /** @static */
+	    CLEAR: 12,
+	    /** @static */
+	    ENTER: 13,
+	    /** @static */
+	    SHIFT: 16,
+	    /** @static */
+	    CONTROL: 17,
+	    /** @static */
+	    ALT: 18,
+	    /** @static */
+	    CAPS_LOCK: 20,
+	    /** @static */
+	    ESC: 27,
+	    /** @static */
+	    SPACEBAR: 32,
+	    /** @static */
+	    PAGE_UP: 33,
+	    /** @static */
+	    PAGE_DOWN: 34,
+	    /** @static */
+	    END: 35,
+	    /** @static */
+	    HOME: 36,
+	    /** @static */
+	    LEFT: 37,
+	    /** @static */
+	    UP: 38,
+	    /** @static */
+	    RIGHT: 39,
+	    /** @static */
+	    DOWN: 40,
+	    /** @static */
+	    PLUS: 43,
+	    /** @static */
+	    MINUS: 44,
+	    /** @static */
+	    INSERT: 45,
+	    /** @static */
+	    DELETE: 46,
+	    /** @static */
+	    HELP: 47,
+	    /** @static */
+	    NUM_LOCK: 144
+	};
+
+	module.exports = KeyCodes;
 
 
 /***/ }

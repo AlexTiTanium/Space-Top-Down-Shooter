@@ -14,6 +14,21 @@ var _ = require('lodash');
 module.exports = Class.extend([Events], {
 
     /**
+     * Default renderer, if debug ON will be switched to CANVAS
+     */
+    renderer: Phaser.AUTO,
+
+    /**
+     * Enable engine debug
+     */
+    debug: true,
+
+    /**
+     * Enable performance monitor
+     */
+    debugPerformanceMonitor: true,
+
+    /**
     * The width of your game in game pixels.
     * If given as a string the value must be between 0 and 100 and will be used as the percentage width
     * of the parent container, or the browser window if no parent is given
@@ -56,14 +71,24 @@ module.exports = Class.extend([Events], {
     createGame: function() {
 
         // Initialize optional modules
+        Phaser.PluginManager = require('./modules/core/PluginManager');
         Phaser.Keyboard = require('./modules/input/Keyboard');
         Phaser.Physics.Arcade = require('./modules/physics/World');
 
+        // Initialize debug module
+        if(this.debug) {
+            Phaser.Utils.Debug = require('./modules/debug/Engine');
+            Phaser.BitmapData = require('./modules/gameobjects/BitmapData');
+            this.renderer = Phaser.CANVAS; // Debug not works for WebGL render
+        }
+
         // Create game object
-        this.game =  _.extend(new Phaser.Game(this.width, this.height, Phaser.AUTO, this.element, {
+        this.game =  _.extend(new Phaser.Game(this.width, this.height, this.renderer, this.element, {
             preload: this.preload.bind(this),
             create:  this.create.bind(this)
         }), Events);
+
+        this.game.isDebugEnabled = this.debug;
 
         return this.game;
     },
@@ -74,6 +99,10 @@ module.exports = Class.extend([Events], {
      * they won't yet be available.
      */
     preload: function(){
+
+        if (this.debugPerformanceMonitor){
+            this.game.plugins.add(require('./modules/debug/Performance'));
+        }
 
         this.game.trigger('preload');
 

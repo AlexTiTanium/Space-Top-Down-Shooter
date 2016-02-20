@@ -5,6 +5,7 @@ var ExtractTextPlugin = require("extract-text-webpack-plugin");
 module.exports = {
 
     module: {
+        noParse: [/Performance.js/],
         loaders: [
             { test: /phaser\.js$/, include: path.join(__dirname, 'vendor'), loader: 'imports?PIXI=pixi' },
             { test: /\.less$/, loader: ExtractTextPlugin.extract('style-loader', 'css-loader!less-loader') }

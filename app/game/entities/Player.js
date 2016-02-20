@@ -2,7 +2,7 @@ var GameObject = require('GameObject');
 var KeyCodes = require('KeyCodes');
 
 // Shortcuts
-var game;
+var game, ship, speed = 0;
 
 /**
  * Player represent player objects
@@ -38,26 +38,49 @@ module.exports = GameObject.extend({
     create: function(){
 
         // Add ship to stage
-        var ship = this.ship = game.add.sprite(300, 300 ,'ship');
+        ship = this.ship = game.add.sprite(game.world.centerX, game.world.centerY, 'ship');
+        ship.anchor.set(0.5);
 
         // Add physics
         game.physics.enable(ship, Phaser.Physics.ARCADE);
 
         // Setup physics
-        ship.body.drag.set(100);
-        ship.body.maxVelocity.set(400);
+        ship.body.drag.set(0);
+        ship.body.maxVelocity.set(200);
+
+        // Camera setup
+        //game.camera.follow(ship, Phaser.Camera.FOLLOW_TOPDOWN_TIGHT);
     },
 
     /**
-     * It is called during the core game loop AFTER debug, physics, plugins and the Stage have had their preUpdate methods called.
-     * If is called BEFORE Stage, Tweens, Sounds, Input, Physics, Particles and Plugins have had their postUpdate methods called.
+     * Update is called after all the core subsystems (Input, Tweens, Sound, etc) and the State have updated,
+     * but before the render. It is only called if active is set to true.
      */
     update: function(){
 
+        ship.rotation = game.physics.arcade.angleToPointer(ship);
+
         if(game.input.keyboard.isDown(KeyCodes.SPACEBAR)){
-            game.physics.arcade.accelerationFromRotation(this.ship.rotation, 200, this.ship.body.acceleration);
+            speed += 5;
+            game.physics.arcade.accelerationFromRotation(ship.rotation, speed, ship.body.acceleration);
+        }else{
+            speed = 0;
         }
 
+    },
+
+    /**
+     * Render is called right after the Game Renderer completes,
+     * but before the State.render. It is only called if visible is set to true.
+     */
+    render: function(){
+
+        if(game.isDebugEnabled){
+            game.debug.spriteInfo(ship, 32, 32);
+            game.debug.bodyInfo(ship, 400, 32);
+            game.debug.body(ship);
+            game.debug.cameraInfo(game.camera, 32, 120);
+        }
     }
 
 });

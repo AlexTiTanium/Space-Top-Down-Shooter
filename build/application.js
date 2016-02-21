@@ -9813,8 +9813,8 @@ webpackJsonp([0],[
 	        game.physics.enable(ship, Phaser.Physics.ARCADE);
 
 	        // Setup physics
-	        ship.body.drag.set(0);
-	        ship.body.maxVelocity.set(200);
+	        ship.body.drag.set(2);
+	        ship.body.maxVelocity.set(300);
 
 	        // Camera setup
 	        //game.camera.follow(ship, Phaser.Camera.FOLLOW_TOPDOWN_TIGHT);
@@ -9829,9 +9829,10 @@ webpackJsonp([0],[
 	        ship.rotation = game.physics.arcade.angleToPointer(ship);
 
 	        if(game.input.keyboard.isDown(KeyCodes.SPACEBAR)){
-	            speed += 5;
-	            game.physics.arcade.accelerationFromRotation(ship.rotation, speed, ship.body.acceleration);
+	            speed += 7;
+	            game.physics.arcade.accelerationFromRotation(ship.rotation, Math.min(speed, 150), ship.body.acceleration);
 	        }else{
+	            ship.body.acceleration.set(0);
 	            speed = 0;
 	        }
 
